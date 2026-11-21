@@ -94,29 +94,39 @@ function devinPanel(inc) {
     (S.devin_reference && !prs.length ? `<div class="muted" style="margin-top:10px">Earlier run on the same attack: <a href="${esc(S.devin_reference)}" target="_blank">${esc(S.devin_reference.replace("https://github.com/", ""))}</a></div>` : "") +
     (st === "error" ? `<div class="muted" style="color:var(--red);margin-top:8px">${esc(dv.detail || "error")}</div>` : "");
   const btn = !dv ? `<button id="devin-btn" style="margin-top:12px" ${S.devin_configured ? "" : "disabled title='Set DEVIN_API_KEY and DEVIN_ORG_ID'"}>Send attack log to Devin</button>` : "";
-  return `<div class="panel"><div class="panel-h"><h2>Devin · how did they get in?</h2><span class="muted">${esc(st || "")}</span></div>
+  return `<div class="panel"><div class="panel-h"><h2>Devin · find and fix the hole</h2><span class="muted">${esc(st || "")}</span></div>
     <div class="steps">${body}</div>${links}${btn}</div>`;
 }
 
 function renderStage() {
   const inc = S.incident, stage = $("#stage");
   if (!inc) {
-    shown.real = shown.attacker = null;
-    stage.innerHTML = `<div class="idle"><div class="big">All quiet</div>
-      <div>Every request is scored. Above risk ${S.threshold}, Mirage silently moves the session into a shadow copy of the bank.</div>
-      <div class="kpis"><div class="kpi"><b>${S.stats.sessions}</b>sessions</div><div class="kpi"><b>${S.stats.requests}</b>requests</div>
-      <div class="kpi"><b>${S.protection ? "ON" : "OFF"}</b>protection</div></div></div>`;
+    shown.real = shown.attacker = shown.realStart = null;
+    const rows = (S.accounts || []).map((a) => `<tr><td>${esc(a.name)}</td><td class="mono muted">${esc(a.account)}</td>
+      <td class="mono num">${aed(a.balance)}</td></tr>`).join("");
+    stage.innerHTML = `<div class="idle">
+      <div class="big">Desert Bank · night shift</div>
+      <div class="prot ${S.protection ? "on" : "off"}">Mirage protection is ${S.protection ? "ON" : "OFF"}</div>
+      <div class="panel accounts"><div class="panel-h"><h2>Customer accounts (real balances)</h2><span class="muted">${S.stats.requests} requests seen</span></div>
+        <table>${rows}</table></div>
+      <div class="how">
+        <div><b>1</b>Every request to the bank passes through Mirage and gets a risk score.</div>
+        <div><b>2</b>If a session looks like an attack (risk ${S.threshold}+), it is not blocked.</div>
+        <div><b>3</b>Instead, it is silently moved into a fake copy of the bank. The attacker keeps "stealing" fake money.</div>
+      </div></div>`;
     return;
   }
   const off = !inc.diverted, released = inc.status === "released", fraud = inc.status === "confirmed_fraud";
   const sent = inc.balances.real < (shown.realStart ?? inc.balances.real);
   const state = released ? "RELEASED AFTER CUSTOMER CONFIRMATION" : fraud ? "FRAUD CONFIRMED · REPORT FILED" :
-    off ? "ATTACK IN PROGRESS · PROTECTION OFF" : "ATTACK DIVERTED INTO MIRAGE";
-  const title = off ? "Money is leaving the real bank" : released ? "Held transfers posted to the real ledger" :
-    "The attacker is robbing a bank that doesn't exist";
+    off ? "ATTACK IN PROGRESS · PROTECTION OFF" : "ATTACKER TRAPPED IN A FAKE BANK";
+  const first = inc.name.split(" ")[0];
+  const title = off ? `Protection is off: the attacker is moving ${first}'s real money out of the bank` :
+    released ? "Held transfers posted to the real account" :
+    `The attacker was moved into a fake copy of the bank. He thinks he is stealing; ${first}'s real money hasn't moved.`;
   const drained = off && inc.balances.real < 1;
-  const realNote = released ? "held transfers posted after confirmation" : off ? (drained ? "drained" : "transfers hitting the real ledger") : "untouched · nothing left the bank";
-  const fakeNote = inc.diverted ? `${inc.held.length} transfers "approved" · ${short(inc.held_total)} held in the shadow bank` : "same as real: no deception active";
+  const realNote = released ? "held transfers posted after the customer confirmed" : off ? (drained ? "drained: the money really left the bank" : "real money is leaving the bank") : "in the real bank database · not a single dirham moved";
+  const fakeNote = inc.diverted ? `fake balance in the shadow copy · ${inc.held.length} transfers "approved", none of them real` : "no deception: he sees the real balance";
   const sigs = inc.signals.map((s) => `<div class="sig"><span class="w">+${s.weight}</span><div><b>${esc(s.title)}</b><div>${esc(s.detail)}</div></div></div>`).join("");
   const eps = inc.endpoints.map((e) => `<span class="${e.includes("/v1/transfers") ? "hot" : ""}">${esc(e)}</span>`).join("");
 
@@ -130,14 +140,14 @@ function renderStage() {
       <div class="gauge" style="--v:${inc.score};--c:${inc.score >= S.threshold ? "var(--red)" : "var(--amber)"}"><span>${inc.score}</span><small>RISK</small></div>
     </div>
     <div class="balances">
-      <div class="bal real ${drained || (off && sent) ? "drained" : ""}"><div class="lbl">Real ledger</div><div class="amt" id="amt-real"></div><div class="note">${realNote}</div></div>
-      <div class="bal fake"><div class="lbl">What the attacker sees</div><div class="amt" id="amt-fake"></div><div class="note">${fakeNote}</div></div>
+      <div class="bal real ${drained || (off && sent) ? "drained" : ""}"><div class="lbl">${esc(first)}'s real balance</div><div class="amt" id="amt-real"></div><div class="note">${realNote}</div></div>
+      <div class="bal fake"><div class="lbl">What the attacker sees on his screen</div><div class="amt" id="amt-fake"></div><div class="note">${fakeNote}</div></div>
     </div>
     <div class="grid2">
-      <div class="panel"><div class="panel-h"><h2>Why Mirage diverted</h2><span class="muted">threshold ${S.threshold}</span></div>
+      <div class="panel"><div class="panel-h"><h2>Why this session was flagged</h2><span class="muted">threshold ${S.threshold}</span></div>
         <div class="meter"><i style="width:${inc.score}%"></i><em style="left:${S.threshold}%"></em></div>
         <div class="signals">${sigs}</div></div>
-      <div class="panel flow"><div class="panel-h"><h2>Where the money was going</h2><span class="muted">${inc.destinations.length} destinations</span></div>
+      <div class="panel flow"><div class="panel-h"><h2>Where the attacker tried to send the money</h2><span class="muted">${inc.destinations.length} destinations</span></div>
         ${flowSvg(inc)}<div class="endpoints">${eps}</div></div>
     </div>
     <div class="bottom">${devinPanel(inc)}

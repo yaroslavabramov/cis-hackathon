@@ -39,9 +39,9 @@ button.ghost { background: transparent; color: var(--muted); padding: 6px 12px; 
 button:disabled { opacity: .45; cursor: default; }
 .switch { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--muted); }
 .switch input { display: none; }
-.track { width: 36px; height: 20px; border-radius: 20px; background: #2a2f38; position: relative; transition: .2s; }
+.track { width: 36px; height: 20px; border-radius: 20px; background: #2a2f38; position: relative; }
 .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%;
-  background: #cfd3da; transition: .2s; }
+  background: #cfd3da; }
 .switch input:checked + .track { background: var(--mirage); }
 .switch input:checked + .track::after { left: 19px; background: white; }
 
@@ -132,3 +132,17 @@ main { flex: 1; display: grid; grid-template-columns: 360px 1fr; gap: 16px; padd
 .actions button b { display: block; } .actions button span { color: var(--muted); font-size: 12px; }
 .actions .ok { border-color: #1e5a40; } .actions .bad { border-color: #6b2a2a; }
 .panel-h a { font-size: 12px; text-decoration: none; }
+
+.idle { justify-content: flex-start; padding-top: 30px; }
+.idle .big { font-size: 28px; }
+.prot { font-size: 15px; font-weight: 700; letter-spacing: .06em; padding: 8px 18px; border-radius: 999px; }
+.prot.off { color: var(--red); background: #2c1515; border: 1px solid #6b2a2a; }
+.prot.on { color: var(--mirage); background: #221a3b; border: 1px solid #4c3d86; }
+.accounts { width: 640px; text-align: left; }
+.accounts table { width: 100%; border-collapse: collapse; font-size: 15px; color: var(--text); }
+.accounts td { padding: 9px 4px; border-top: 1px solid var(--line); }
+.accounts td.num { text-align: right; font-size: 16px; }
+.how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width: 860px; text-align: left; font-size: 13px; color: var(--muted); }
+.how div { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.how b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #221a3b; color: var(--mirage); margin-right: 8px; font-size: 12px; }
+.banner .title { font-size: 19px; line-height: 1.3; }

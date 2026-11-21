@@ -36,7 +36,7 @@ def main():
                 name, iban, country, base = random.choice(payees)
                 c.post("/v2/transfers", json={"from_account": acc["id"], "to_iban": iban, "to_name": name,
                                               "country": country, "amount": round(base * random.uniform(0.7, 1.3), 2)})
-        except httpx.HTTPError:
+        except (httpx.HTTPError, KeyError, ValueError):
             clients.pop(cid, None)
         time.sleep(a.interval * random.uniform(0.5, 1.5))
 

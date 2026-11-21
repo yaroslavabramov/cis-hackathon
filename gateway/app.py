@@ -42,6 +42,7 @@ class Store:
         self.events: deque = deque(maxlen=400)
         self.requests = 0
         self.incident_id: str | None = None
+        self.accounts: list[dict] = []
         self.protection = os.getenv("MIRAGE_PROTECTION", "on") == "on"
 
 
@@ -53,6 +54,7 @@ TASKS: set[asyncio.Task] = set()
 @asynccontextmanager
 async def lifespan(_):
     spawn(SHADOW.start())
+    spawn(refresh_accounts())
     yield
     await HTTP.aclose()
 
@@ -94,6 +96,12 @@ async def profile(customer_id: str) -> dict:
     if customer_id not in STORE.profiles:
         STORE.profiles[customer_id] = await internal(REAL, "GET", f"/internal/profile/{customer_id}")
     return STORE.profiles[customer_id]
+
+
+async def refresh_accounts():
+    STORE.accounts = [{"name": a["owner_name"], "account": a["id"], "balance": a["balance"]}
+                      for a in (await internal(REAL, "GET", "/internal/accounts"))["accounts"]]
+    notify()
 
 
 async def refresh_balances(session: dict):
@@ -174,6 +182,8 @@ async def proxy(request: Request):
                                "result": describe(path, r.status_code, data), "target": where})
         if is_transfer or path == "/v2/auth/login":
             await refresh_balances(session)
+    if is_transfer:
+        await refresh_accounts()
         event("request", f"{request.method} {path}", session, status=r.status_code, target=where,
               score=session["score"], result=describe(path, r.status_code, data))
     return Response(r.content, r.status_code, media_type=r.headers.get("content-type"))
@@ -234,7 +244,7 @@ def snapshot() -> dict:
                       "held": sum(h["amount"] for s in STORE.sessions.values() for h in s["held"])},
             "sessions": sorted(({"id": s["id"], "name": s["name"], "device_id": s["device_id"], "score": s["score"],
                                  "status": s["status"]} for s in STORE.sessions.values()), key=lambda s: -s["score"]),
-            "events": list(STORE.events)[-80:], "incident": incident_view(incident) if incident else None}
+            "events": list(STORE.events)[-80:], "accounts": STORE.accounts, "incident": incident_view(incident) if incident else None}
 
 
 async def start_devin(session: dict):
@@ -278,6 +288,7 @@ def api_snapshot():
 async def api_stream(request: Request):
     q: asyncio.Queue = asyncio.Queue(maxsize=1)
     SUBSCRIBERS.add(q)
+    spawn(refresh_accounts())
 
     async def gen():
         try:
@@ -314,6 +325,7 @@ async def api_reset():
     await internal(REAL, "POST", "/internal/reset")
     if SHADOW.status == "ready":
         await internal(SHADOW, "POST", "/internal/reset")
+    await refresh_accounts()
     event("system", "Demo reset")
     return {"ok": True}
 
@@ -335,6 +347,7 @@ async def api_release(sid: str):
             "country": h.get("country", "AE"), "amount": h["amount"], "reference": h.get("reference", "")})
     session["status"] = "released"
     await refresh_balances(session)
+    await refresh_accounts()
     event("release", f"Customer confirmed: {len(session['held'])} held transfers posted to the real ledger", session)
     return {"ok": True}
 
