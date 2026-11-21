@@ -49,14 +49,19 @@ def run():
     print("Target: Desert Bank, customer C-1001.")
     wait()
 
-    title("1 · WITHOUT LA MIRAGE")
-    API.post("/api/reset"); API.post("/api/protection", json={"on": False}); time.sleep(1.5)
-    attack("0.2")
-    print(f"{R}{BOLD}Four accounts emptied through the legacy API. Real money.{X}")
+    title("1 · TODAY: the bank blocks him")
+    API.post("/api/reset"); API.post("/api/protection", json={"mode": "block"}); time.sleep(1.5)
+    attack("0.3")
+    print(f"{D}Blocked. The bank never learned how he planned to get the money out.{X}")
     wait()
 
-    title("2 · WITH LA MIRAGE")
-    API.post("/api/reset"); API.post("/api/protection", json={"on": True}); time.sleep(1.5)
+    title("1b · A week later: someone quieter")
+    subprocess.run([sys.executable, os.path.join(ROOT, "attacker", "attack.py"), "--quiet", "--quiet-pace", "2.7"], check=False)
+    print(f"{R}{BOLD}Under the risk threshold, through the same legacy API. Real money.{X}")
+    wait()
+
+    title("2 · WITH LA MIRAGE: same first attacker")
+    API.post("/api/reset"); API.post("/api/protection", json={"mode": "mirage"}); time.sleep(1.5)
     attack("0.3")
     s = snap()
     inc, found = s["incident"], s["findings"]

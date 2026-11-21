@@ -232,3 +232,15 @@ table.watch td.num { text-align: right; } table.watch tr.hit td { color: #ffe7b0
 .legend i.g { background: var(--green); } .legend i.v { background: var(--mirage); } .legend i.f { background: #5b7fa3; }
 .idle { padding-top: 6px; gap: 14px; }
 main { grid-template-columns: 320px 1fr; }
+
+.modes { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.modes button { border: 0; border-radius: 0; background: transparent; color: var(--muted); padding: 7px 12px; font-size: 12.5px; }
+.modes button + button { border-left: 1px solid var(--line); }
+.modes button.on[data-mode="off"] { background: #2c1515; color: var(--red); }
+.modes button.on[data-mode="block"] { background: #2a2210; color: var(--amber); }
+.modes button.on[data-mode="mirage"] { background: #221a3b; color: white; }
+.banner.blocked { border-color: #6b5520; background: radial-gradient(120% 140% at 0% 0%, #3d2f0e 0%, #17130a 60%); }
+.banner.blocked .state { color: var(--amber); } .banner.blocked .meta { color: #e6d3a6; }
+.learned { display: flex; gap: 12px; } .learned div { flex: 1; background: var(--panel2); border-radius: 12px; padding: 12px; color: var(--muted); font-size: 12px; }
+.learned b { display: block; font-family: var(--mono); font-size: 26px; color: var(--text); }
+.lk.blocked { stroke: var(--amber); stroke-width: 3; } .map text.x { fill: var(--amber); font-size: 16px; font-weight: 700; } .legend i.b { background: var(--amber); }

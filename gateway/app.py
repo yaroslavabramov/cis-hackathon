@@ -50,7 +50,11 @@ class Store:
         self.accounts: list[dict] = []
         self.mules: dict[str, dict] = {}
         self.findings: dict[str, dict] = {}
-        self.protection = os.getenv("MIRAGE_PROTECTION", "on") == "on"
+        self.mode = os.getenv("MIRAGE_MODE", "mirage")
+
+    @property
+    def protection(self) -> bool:
+        return self.mode == "mirage"
 
 
 STORE = Store()
@@ -184,7 +188,14 @@ async def proxy(request: Request):
                                                 f"{mule['incident']} at {mule['first_seen']}")
                 if STORE.protection and not risk.attacker_like(session):
                     return await protect(session, path, payload, mule)
+        if session["status"] == "blocked":
+            return blocked_response(session, request.method, path, payload)
         if session["score"] >= risk.THRESHOLD and not session["diverted"]:
+            if STORE.mode == "block":
+                session.update(status="blocked", kind="attacker", blocked_at=clock.label())
+                STORE.incident_id = session["id"]
+                event("alert", f"Session blocked at risk {session['score']}", session)
+                return blocked_response(session, request.method, path, payload)
             if STORE.protection:
                 await divert(session)
             elif session["status"] == "monitoring":
@@ -263,6 +274,13 @@ async def hibernate_loop():
                 s["frozen"] = await internal(shadow, "GET", "/internal/dump")
                 await POOL.release(shadow)
                 event("pool", f"Attacker idle {IDLE_TTL / 60:.0f} min: mirage frozen, sandbox switched off", s)
+
+
+def blocked_response(session: dict, method: str, path: str, payload: dict) -> JSONResponse:
+    session["log"].append({"ts": clock.label(), "method": method, "path": path, "body": json.dumps(redact(payload)) if payload else "",
+                           "status": 403, "result": "session_blocked", "target": "blocked"})
+    event("request", f"{method} {path}", session, status=403, target="blocked", score=session["score"], result="blocked")
+    return JSONResponse({"detail": {"error": "session_blocked", "message": "This session was blocked for security reasons."}}, 403)
 
 
 def client_ip(request: Request) -> str:
@@ -370,7 +388,7 @@ def register(request: Request, payload: dict, data: dict, prof: dict) -> dict:
                "user_agent": request.headers.get("user-agent", ""), "started": clock.label(), "score": 0,
                "signals": {}, "attempts": [], "step_up_failed": False, "diverted": False, "diverted_at": None,
                "status": "monitoring", "held": [], "log": [], "balances": {"real": 0, "attacker": 0}, "devin": None,
-               "kind": None, "protected_at": None, "matched": None, "tactics": {},
+               "kind": None, "protected_at": None, "matched": None, "blocked_at": None, "tactics": {},
                "first_diverted": None, "last_seen": None, "owned": set(), "stepped_up": False, "decoys": 0,
                "shadow": None, "cloned": set()}
     STORE.sessions[data["token"]] = session
@@ -420,7 +438,7 @@ def incident_view(session: dict) -> dict:
     endpoints = list(dict.fromkeys(f"{e['method']} {e['path']}" for e in session["log"]))
     return {**{k: session[k] for k in ("id", "customer_id", "name", "device_id", "ip", "user_agent", "started", "score",
                                        "diverted", "diverted_at", "status", "balances", "devin", "kind",
-                                       "protected_at", "matched", "decoys")},
+                                       "protected_at", "matched", "decoys", "blocked_at")},
             "mule": STORE.mules.get(session["matched"]) if session["matched"] else None,
             "signals": list(session["signals"].values()), "held": session["held"], "tactics": session["tactics"],
             "deception": deception(session),
@@ -436,7 +454,8 @@ def topology() -> dict:
         if s["kind"] or now - s.get("last_req", 0) < 120:
             latest[s["id"] if s["kind"] else (s["customer_id"], s["device_id"])] = s
     for s in latest.values():
-        route = ("shadow" if s["shadow"] is not None else "frozen") if s["diverted"] else "real"
+        route = ("shadow" if s["shadow"] is not None else "frozen") if s["diverted"] else \
+            "blocked" if s["status"] == "blocked" else "real"
         box = None
         if route == "shadow":
             box = "local" if s["shadow"] is local else s["shadow"].detail
@@ -457,7 +476,7 @@ def topology() -> dict:
 
 def snapshot() -> dict:
     incident = next((s for s in unique_sessions() if s["id"] == STORE.incident_id), None)
-    return {"clock": clock.now().isoformat(), "protection": STORE.protection, "threshold": risk.THRESHOLD,
+    return {"clock": clock.now().isoformat(), "protection": STORE.protection, "mode": STORE.mode, "threshold": risk.THRESHOLD,
             "shadow": POOL.info(),
             "devin_configured": DEVIN.configured, "devin_auto": DEVIN.configured and os.getenv("DEVIN_AUTO", "1") == "1", "devin_reference": os.getenv("DEVIN_REFERENCE_PR", ""),
             "stats": {"sessions": len(unique_sessions()), "requests": STORE.requests,
@@ -536,6 +555,30 @@ async def api_verify(sid: str, body: dict):
     return {"ok": True}
 
 
+STAGE = {"lines": [], "caption": ""}
+
+
+@app.get("/stage")
+def stage_page():
+    return FileResponse(STATIC / "stage.html")
+
+
+@app.get("/api/stage")
+def stage_get():
+    return {"lines": STAGE["lines"][-60:], "caption": STAGE["caption"]}
+
+
+@app.post("/api/stage")
+def stage_post(body: dict):
+    if body.get("clear"):
+        STAGE.update(lines=[], caption="")
+    if "line" in body:
+        STAGE["lines"].append(body["line"])
+    if "caption" in body:
+        STAGE["caption"] = body["caption"]
+    return {"ok": True}
+
+
 @app.get("/")
 def root():
     return RedirectResponse("/console")
@@ -575,9 +618,9 @@ async def api_stream(request: Request):
 
 @app.post("/api/protection")
 async def api_protection(body: dict):
-    STORE.protection = bool(body.get("on"))
-    event("system", f"Protection {'ON' if STORE.protection else 'OFF'}")
-    return {"protection": STORE.protection}
+    STORE.mode = body.get("mode") or ("mirage" if body.get("on") else "off")
+    event("system", f"Mode: {STORE.mode}")
+    return {"mode": STORE.mode}
 
 
 @app.post("/api/reset")
@@ -585,12 +628,12 @@ async def api_reset():
     for task in list(TASKS):
         if task.get_coro().__name__ in ("start_devin", "devin_when_quiet", "run_verify"):
             task.cancel()
-    protection = STORE.protection
+    mode = STORE.mode
     for s in unique_sessions():
         if s["shadow"]:
             spawn(POOL.release(s["shadow"]))
     STORE.reset()
-    STORE.protection = protection
+    STORE.mode = mode
     clock.reset()
     await internal(REAL, "POST", "/internal/reset")
     await refresh_accounts()
