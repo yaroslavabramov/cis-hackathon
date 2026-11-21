@@ -97,6 +97,12 @@ def main():
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         run()
+    except Exception as e:
+        print(f"demo step failed: {type(e).__name__}: {e}", flush=True)
+        API.post("/api/stage", json={"hint": "press Reset in the console to start the demo again"})
+        while True:
+            restart_if_reset()
+            time.sleep(0.3)
     finally:
         TRAFFIC.terminate()
 
@@ -113,14 +119,18 @@ def run():
     title("1 · TODAY: the bank blocks him")
     API.post("/api/reset", params={"keep_stage": "true"}); API.post("/api/protection", json={"mode": "block"}); time.sleep(1.5)
     attack("0.3")
+    restart_if_reset()
     say("Blocked. 3 requests seen, 0 vulnerabilities learned.", D, "dim")
     wait()
 
     title("2 · WITH LA MIRAGE: same first attacker")
     API.post("/api/reset", params={"keep_stage": "true"}); API.post("/api/protection", json={"mode": "mirage"}); time.sleep(1.5)
     attack("0.3")
+    restart_if_reset()
     s = snap()
     inc, found = s["incident"], s["findings"]
+    if not inc or not inc.get("deception"):
+        raise RuntimeError("no diverted incident after the attack")
     say(f"He 'stole' AED {inc['deception']['fake_stolen']:,.0f} of fake money. Real money out: AED {inc['deception']['real_lost']:,.0f}, to his own account.", G + BOLD, "green")
     say(f"He found {len(found)} real vulnerabilities for us.", G + BOLD, "green")
     wait()
