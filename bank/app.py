@@ -66,10 +66,22 @@ def customer_accounts(customer_id: str) -> list[dict]:
     return [a for a in STATE["accounts"].values() if a["owner"] == customer_id]
 
 
-def execute_transfer(request: Request, session: dict, body: TransferIn, channel: str) -> dict:
-    account = STATE["accounts"].get(body.from_account)
-    if not account or (channel != "api_v1" and account["owner"] != session["customer_id"]):
+def owned_account(session: dict, account_id: str) -> dict:
+    account = STATE["accounts"].get(account_id)
+    if not account or account["owner"] != session["customer_id"]:
         raise HTTPException(404, {"error": "account_not_found"})
+    return account
+
+
+def require_step_up_for_new_beneficiary(session: dict, body: TransferIn):
+    known = {b["iban"] for b in STATE["beneficiaries"].get(session["customer_id"], [])}
+    if body.to_iban not in known and (not body.step_up_token or body.step_up_token != session["step_up_token"]):
+        raise HTTPException(403, {"error": "step_up_required",
+                                  "message": "New beneficiary must be confirmed in the app on a trusted device"})
+
+
+def execute_transfer(request: Request, session: dict, body: TransferIn, channel: str) -> dict:
+    account = owned_account(session, body.from_account)
     if body.amount <= 0:
         raise HTTPException(422, {"error": "invalid_amount"})
     if body.amount > account["balance"]:
@@ -103,7 +115,8 @@ def login(body: LoginIn, request: Request):
 
 @app.post("/v2/auth/step-up")
 def step_up(body: StepUpIn, session: dict = Depends(current_session)):
-    if body.device_id not in STATE["devices"].get(session["customer_id"], []):
+    trusted = STATE["devices"].get(session["customer_id"], [])
+    if body.device_id != session["device_id"] or session["device_id"] not in trusted:
         raise HTTPException(403, {"error": "untrusted_device"})
     session["step_up_token"] = secrets.token_urlsafe(16)
     return {"step_up_token": session["step_up_token"]}
@@ -116,33 +129,27 @@ def accounts_v2(session: dict = Depends(current_session)):
 
 @app.get("/v2/accounts/{account_id}/transactions")
 def transactions_v2(account_id: str, limit: int = 20, session: dict = Depends(current_session)):
-    account = STATE["accounts"].get(account_id)
-    if not account or account["owner"] != session["customer_id"]:
-        raise HTTPException(404, {"error": "account_not_found"})
+    owned_account(session, account_id)
     txs = [t for t in STATE["transactions"] if t["account_id"] == account_id]
     return {"transactions": txs[-limit:][::-1]}
 
 
 @app.post("/v2/transfers")
 def transfer_v2(body: TransferIn, request: Request, session: dict = Depends(current_session)):
-    known = {b["iban"] for b in STATE["beneficiaries"].get(session["customer_id"], [])}
-    if body.to_iban not in known and (not body.step_up_token or body.step_up_token != session["step_up_token"]):
-        raise HTTPException(403, {"error": "step_up_required",
-                                  "message": "New beneficiary must be confirmed in the app on a trusted device"})
+    require_step_up_for_new_beneficiary(session, body)
     return execute_transfer(request, session, body, "api_v2")
 
 
 # Legacy API, still served for app versions < 4.0
 @app.get("/v1/accounts/{account_id}/balance")
 def balance_v1(account_id: str, session: dict = Depends(current_session)):
-    account = STATE["accounts"].get(account_id)
-    if not account:
-        raise HTTPException(404, {"error": "account_not_found"})
+    account = owned_account(session, account_id)
     return {"account_id": account_id, "balance": account["balance"], "currency": "AED"}
 
 
 @app.post("/v1/transfers")
 def transfer_v1(body: TransferIn, request: Request, session: dict = Depends(current_session)):
+    require_step_up_for_new_beneficiary(session, body)
     return execute_transfer(request, session, body, "api_v1")
 
 
