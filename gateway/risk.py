@@ -5,9 +5,9 @@ from . import clock
 
 THRESHOLD = int(os.getenv("MIRAGE_THRESHOLD", "70"))
 CANARY_KEY = os.getenv("MIRAGE_CANARY_KEY", "dsrt_live_7Hq2LmX9vB4kP0aZ")
-WEIGHTS = {"canary": 100, "machine_speed": 40, "amount_spike": 20, "step_up_evasion": 20, "new_device": 15,
+WEIGHTS = {"canary": 100, "known_mule": 50, "machine_speed": 40, "amount_spike": 20, "step_up_evasion": 20, "new_device": 15,
            "unusual_hour": 15, "new_beneficiary": 15, "cross_border": 15, "legacy_endpoint": 15}
-TITLES = {"canary": "Honeytoken used", "machine_speed": "Machine speed", "amount_spike": "Amount spike",
+TITLES = {"canary": "Honeytoken used", "known_mule": "Known mule account", "machine_speed": "Machine speed", "amount_spike": "Amount spike",
           "step_up_evasion": "Step-up evasion", "new_device": "New device", "unusual_hour": "Unusual hour",
           "new_beneficiary": "New beneficiary", "cross_border": "Cross-border", "legacy_endpoint": "Legacy API"}
 
@@ -54,3 +54,10 @@ def on_transfer(session: dict, profile: dict, path: str, payload: dict):
     if len(session["attempts"]) >= 3:
         span = session["attempts"][-1] - session["attempts"][0]
         add(session, "machine_speed", f"{len(session['attempts'])} transfer attempts in {span:.1f}s: faster than a human can tap")
+
+
+ATTACKER_SIGNALS = {"new_device", "canary", "machine_speed", "step_up_evasion"}
+
+
+def attacker_like(session: dict) -> bool:
+    return bool(ATTACKER_SIGNALS & session["signals"].keys())
