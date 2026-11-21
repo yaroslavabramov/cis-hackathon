@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mirage · Desert Bank</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="logo"><span></span><span></span><span></span></div>
+      <div>
+        <div class="name">MIRAGE</div>
+        <div class="sub">deception layer · Desert Bank</div>
+      </div>
+    </div>
+    <div class="clock"><span id="clock">--:--:--</span><small>GST</small></div>
+    <div class="controls">
+      <div id="shadow" class="pill"></div>
+      <label class="switch" title="When OFF, Mirage only watches">
+        <input type="checkbox" id="protection"><span class="track"></span><span class="lbl">Protection</span>
+      </label>
+      <button id="reset" class="ghost">Reset</button>
+    </div>
+  </header>
+  <main>
+    <section class="feed panel">
+      <div class="panel-h"><h2>Live traffic</h2><span id="stats" class="muted"></span></div>
+      <div id="feed" class="feed-list"></div>
+    </section>
+    <section id="stage" class="stage"></section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
