@@ -2,7 +2,12 @@
 # Starts the real bank (8001), a local shadow bank (8002, skipped when Daytona is used) and the Mirage gateway (8000).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[ -f .env ] && set -a && . ./.env && set +a
+# Variables already set in the environment win over .env (e.g. DEVIN_AUTO=0 ./scripts/run.sh for rehearsals)
+if [ -f .env ]; then
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    if [[ $k =~ ^[A-Z_]+$ ]] && [ -z "${!k:-}" ]; then export "$k=$v"; fi
+  done < .env
+fi
 PY=.venv/bin/python
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null' EXIT INT TERM

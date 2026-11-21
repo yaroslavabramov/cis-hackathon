@@ -48,7 +48,12 @@ In other terminals:
 ```
 
 Without `DAYTONA_API_KEY` the shadow bank runs as a local process; without Devin credentials the console still works
-and the Devin step is disabled.
+and the Devin step is disabled. With credentials, Devin starts automatically when a session is diverted; use
+`DEVIN_AUTO=0 ./scripts/run.sh` for rehearsals (the console button still starts it manually).
+
+Example output: [PR #1](https://github.com/yaroslavabramov/cis-hackathon/pull/1) was opened by Devin about two minutes
+after an attack was diverted. It routes `/v1/transfers` through the same step-up check as `/v2` and adds a test that
+replays the captured attack; the test fails on `main` and passes with the fix.
 
 ## Demo script (5 min)
 

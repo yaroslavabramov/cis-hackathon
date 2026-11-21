@@ -91,6 +91,7 @@ function devinPanel(inc) {
   const body = steps.map(([t, done, live]) => `<div class="step ${done ? "done" : live ? "live" : ""}"><span class="b"></span>${t}</div>`).join("");
   const links = (dv?.url ? `<div class="muted" style="margin-top:10px">Session: <a href="${esc(dv.url)}" target="_blank">${esc(dv.url)}</a></div>` : "") +
     prs.map((p) => `<div class="pr">PR · <a href="${esc(p)}" target="_blank">${esc(p)}</a></div>`).join("") +
+    (S.devin_reference && !prs.length ? `<div class="muted" style="margin-top:10px">Earlier run on the same attack: <a href="${esc(S.devin_reference)}" target="_blank">${esc(S.devin_reference.replace("https://github.com/", ""))}</a></div>` : "") +
     (st === "error" ? `<div class="muted" style="color:var(--red);margin-top:8px">${esc(dv.detail || "error")}</div>` : "");
   const btn = !dv ? `<button id="devin-btn" style="margin-top:12px" ${S.devin_configured ? "" : "disabled title='Set DEVIN_API_KEY and DEVIN_ORG_ID'"}>Send attack log to Devin</button>` : "";
   return `<div class="panel"><div class="panel-h"><h2>Devin · how did they get in?</h2><span class="muted">${esc(st || "")}</span></div>
