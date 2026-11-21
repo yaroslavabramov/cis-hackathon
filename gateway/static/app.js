@@ -182,8 +182,6 @@ function tacticsHtml(inc) {
       `AED ${Number(d.real_lost || 0).toLocaleString()} really sent to <b>${probe}</b>, his own account.`)}
     ${card("sticky", "Sticky mirage", "His device, or any untrusted device on this account, returns to the same fake bank.",
       `${d.relogins} re-login${d.relogins === 1 ? "" : "s"} from a fresh session: still inside the mirage, balances consistent.`)}
-    ${card("bait", "Bait account", "A fake matured fixed deposit appears once the real account is 'empty'.",
-      `Fake fixed deposit of ${short(1200000)} chased into ${(t.bait || []).length} transfers to new mules.`)}
     ${card("friction", "Compliance friction", "Big wires ask for the beneficiary's phone and purpose.",
       `${d.phones} mule phone number${d.phones === 1 ? "" : "s"} handed over by the attacker.`)}
   </div>`;

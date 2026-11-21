@@ -22,9 +22,10 @@ at that first attempt, the endpoint would still be open for the next attacker, o
    `/v1/transfers` and empties four accounts (AED 576k of real money).
 2. Protection on, same attacker. He is moved to his own shadow bank on the first transfer attempt. Inside it he sends
    AED 1 to his own account to check the bank isn't onto him (Mirage lets that one through for real), logs in again from
-   a fresh session, empties the account plus a planted fixed deposit, gives up his mules' phone numbers when asked for
-   "compliance" details, and finds that `/v1` will also move money out of other customers' accounts. The other
-   customers in the copy are synthetic. He walks away with AED 2.6M of fake money; Mirage has three findings.
+   a fresh session, empties the account, and finds that `/v1` will also move money out of other customers' accounts.
+   The other customers in the copy are synthetic. When he moves large sums out of them, the copy asks for the
+   beneficiary's phone number "for compliance", and he gives up his mules' numbers. He walks away with AED 1.4M of fake
+   money; Mirage has three findings.
 3. When he goes quiet, the findings go to Devin. Devin opened [PR #2](https://github.com/yaroslavabramov/cis-hackathon/pull/2)
    about a minute and a half later.
 4. Mirage boots `main` and the PR side by side in a fresh Daytona sandbox and replays each exploit. `main` returns 200,
@@ -44,7 +45,7 @@ attacker ──► Mirage gateway ──► real bank
 | File | Role |
 |---|---|
 | `gateway/risk.py` | Deterministic risk signals with weights. No model in the request path. |
-| `gateway/app.py` | Proxy, diversion, and the shadow tactics: sticky sessions, probe pass-through, bait account, compliance friction. |
+| `gateway/app.py` | Proxy, diversion, and the shadow tactics: sticky sessions, probe pass-through, compliance friction. |
 | `gateway/findings.py` | Bank rules checked on shadow traffic: step-up before paying a new beneficiary, debits and balance reads only on the session's own accounts. |
 | `gateway/shadow.py` | Sandbox pool. Each sandbox has a private preview URL and no outbound network once the bank is running. The pool keeps a couple warm, grows with recent attacker count, switches idle spares off, and freezes a quiet attacker's mirage so it can be resumed later in a new sandbox with the same state. |
 | `gateway/devin.py` | Sends findings and the attack log to the Devin API. |
@@ -71,6 +72,5 @@ against `DEVIN_REFERENCE_PR` instead.
 ## Limits
 
 Only attackers who get flagged end up in a mirage; the bugs they find are fixed for everyone else. The deception holds
-until the attacker checks whether the money arrived, or notices that the sandbox answers slower than the real bank. The
-planted deposit only shows up after a re-login, which a careful attacker comparing account lists could spot. The bank's
+until the attacker checks whether the money arrived, or notices that the sandbox answers slower than the real bank. The bank's
 bugs are planted. The findings, the Devin PR and the replay are not.

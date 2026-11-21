@@ -20,7 +20,6 @@ from .shadow import INTERNAL_KEY, ShadowPool
 REAL_URL = os.getenv("BANK_URL", "http://127.0.0.1:8001")
 PROBE_LIMIT = float(os.getenv("MIRAGE_PROBE_LIMIT", "100"))
 FRICTION_MIN = float(os.getenv("MIRAGE_FRICTION_MIN", "100000"))
-BAIT_BALANCE = float(os.getenv("MIRAGE_BAIT_BALANCE", "1200000"))
 IDLE_TTL = float(os.getenv("MIRAGE_IDLE_TTL", "300"))
 STATIC = Path(__file__).parent / "static"
 
@@ -123,13 +122,8 @@ async def refresh_balances(session: dict):
 
 
 async def divert(session: dict):
+    t0 = time.time()
     snapshot = await internal(REAL, "GET", "/internal/export", params={"customer_id": session["customer_id"]})
-    main = next(iter(snapshot["accounts"].values()))
-    bait = {"id": f"ACC-{int(main['id'].split('-')[1]) + 6000}", "iban": main["iban"][:-6] + "770412",
-            "owner": session["customer_id"], "currency": "AED", "balance": BAIT_BALANCE,
-            "product": "Fixed Deposit (matured 01:55)"}
-    snapshot["accounts"][bait["id"]] = bait
-    session["bait_account"] = bait["id"]
     session["owned"] = set(snapshot["accounts"])
     real_accounts = (await internal(REAL, "GET", "/internal/accounts"))["accounts"]
     for n, acc in enumerate(a for a in real_accounts if a["id"] not in session["owned"]):
@@ -138,12 +132,15 @@ async def divert(session: dict):
                                            "owner": acc["owner"], "currency": "AED",
                                            "balance": [286_400.0, 612_000.0, 94_250.0][n % 3]}
     session["decoys"] = len(real_accounts) - 1
+    t1 = time.time()
     session["shadow"] = await POOL.acquire()
+    t2 = time.time()
     await internal(session["shadow"], "POST", "/internal/import", json=snapshot)
+    session["divert_timing"] = {"prep": round(t1 - t0, 2), "acquire": round(t2 - t1, 2), "import": round(time.time() - t2, 2)}
     session["diverted"], session["status"], session["diverted_at"] = True, "diverted", clock.label()
     session["kind"], session["first_diverted"] = "attacker", time.time()
     STORE.incident_id = session["id"]
-    event("diverted", f"Session diverted into the shadow bank (risk {session['score']})", session)
+    event("diverted", f"Session diverted into a private shadow bank in {time.time() - t0:.1f}s (risk {session['score']})", session)
     if DEVIN.configured and os.getenv("DEVIN_AUTO", "1") == "1":
         spawn(devin_when_quiet(session))
 
@@ -223,8 +220,6 @@ async def proxy(request: Request):
         if is_transfer and r.status_code == 200 and session["diverted"]:
             session["held"].append({**redact(payload), "transfer_id": data["transfer_id"], "held_at": clock.label(),
                                     "probe": float(payload.get("amount", 0)) <= PROBE_LIMIT})
-            if payload.get("from_account") == session.get("bait_account"):
-                tactic(session, "bait", f"AED {float(payload['amount']):,.0f} → {payload['to_name']}")
         if session["diverted"]:
             session["last_seen"] = time.time()
             if path == "/v2/auth/step-up" and r.status_code == 200:
@@ -374,7 +369,7 @@ def register(request: Request, payload: dict, data: dict, prof: dict) -> dict:
                "user_agent": request.headers.get("user-agent", ""), "started": clock.label(), "score": 0,
                "signals": {}, "attempts": [], "step_up_failed": False, "diverted": False, "diverted_at": None,
                "status": "monitoring", "held": [], "log": [], "balances": {"real": 0, "attacker": 0}, "devin": None,
-               "kind": None, "protected_at": None, "matched": None, "tactics": {}, "bait_account": None,
+               "kind": None, "protected_at": None, "matched": None, "tactics": {},
                "first_diverted": None, "last_seen": None, "owned": set(), "stepped_up": False, "decoys": 0,
                "shadow": None, "cloned": set()}
     STORE.sessions[data["token"]] = session

