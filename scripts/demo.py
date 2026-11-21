@@ -36,8 +36,8 @@ def title(text: str):
     stage(f"━━ {text}", "title")
 
 
-NEXT_HINTS = iter(["next: 1 · the bank blocks him", "next: 1b · a week later, someone quieter",
-                   "next: 2 · same attacker, La Mirage on", "next: 3 · Devin fixes, we replay", "next: the end"])
+NEXT_HINTS = iter(["next: 1 · today, the bank blocks", "next: 2 · same attacker, La Mirage on",
+                   "next: 3 · Devin fixes, we replay", "next: the end"])
 
 
 def wait(prompt: str = "Enter ▸"):
@@ -96,12 +96,9 @@ def run():
     title("1 · TODAY: the bank blocks him")
     API.post("/api/reset"); API.post("/api/protection", json={"mode": "block"}); time.sleep(1.5)
     attack("0.3")
-    say("Blocked. The bank never learned how he planned to get the money out.", D, "dim")
-    wait()
-
-    title("1b · A week later: someone quieter")
-    run_attacker("--quiet", "--quiet-pace", "2.7")
-    say("Under the risk threshold, through the same legacy API. Real money.", R + BOLD, "red")
+    title("a week later, someone quieter")
+    run_attacker("--quiet", "--quiet-pace", "2.7", "--quiet-n", "3")
+    say("Blocked the loud one. The quiet one used the same old API. Real money.", R + BOLD, "red")
     wait()
 
     title("2 · WITH LA MIRAGE: same first attacker")
