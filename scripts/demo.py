@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 
 import httpx
@@ -35,8 +36,21 @@ def title(text: str):
     stage(f"━━ {text}", "title")
 
 
+NEXT_HINTS = iter(["next: 1 · the bank blocks him", "next: 1b · a week later, someone quieter",
+                   "next: 2 · same attacker, La Mirage on", "next: 3 · Devin fixes, we replay", "next: the end"])
+
+
 def wait(prompt: str = "Enter ▸"):
-    input(f"{D}{prompt}{X}")
+    """Advance on → / Space in the stage page, or Enter in this terminal."""
+    start = API.get("/api/stage").json()["next"]
+    API.post("/api/stage", json={"hint": next(NEXT_HINTS, "")})
+    pressed = threading.Event()
+    if sys.stdin.isatty():
+        threading.Thread(target=lambda: (sys.stdin.readline(), pressed.set()), daemon=True).start()
+    print(f"{D}{prompt} (or → in the browser){X}", flush=True)
+    while not pressed.is_set() and API.get("/api/stage").json()["next"] == start:
+        time.sleep(0.2)
+    API.post("/api/stage", json={"hint": ""})
 
 
 def run_attacker(*args: str):

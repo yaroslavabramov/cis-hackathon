@@ -387,7 +387,10 @@ document.querySelectorAll("#modes button").forEach((b) => b.addEventListener("cl
   fetch("/api/protection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: b.dataset.mode }) })));
 $("#reset").addEventListener("click", () => { seen = new Set(); shown.real = shown.attacker = shown.realStart = null; fetch("/api/reset", { method: "POST" }); });
 
-if (location.search.includes("embed")) document.body.classList.add("embed");
+if (location.search.includes("embed")) {
+  document.body.classList.add("embed");
+  addEventListener("keydown", (e) => { if (["ArrowRight", " ", "PageDown"].includes(e.key)) { e.preventDefault(); parent.postMessage("mirage-next", "*"); } });
+}
 
 function fit() {
   const z = Math.min(1, innerWidth / (document.body.classList.contains("embed") ? 1240 : 1600), innerHeight / 1000);

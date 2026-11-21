@@ -555,7 +555,7 @@ async def api_verify(sid: str, body: dict):
     return {"ok": True}
 
 
-STAGE = {"lines": [], "caption": ""}
+STAGE = {"lines": [], "caption": "", "next": 0, "hint": ""}
 
 
 @app.get("/stage")
@@ -565,7 +565,7 @@ def stage_page():
 
 @app.get("/api/stage")
 def stage_get():
-    return {"lines": STAGE["lines"][-60:], "caption": STAGE["caption"]}
+    return {"lines": STAGE["lines"][-60:], "caption": STAGE["caption"], "next": STAGE["next"], "hint": STAGE["hint"]}
 
 
 @app.post("/api/stage")
@@ -576,6 +576,10 @@ def stage_post(body: dict):
         STAGE["lines"].append(body["line"])
     if "caption" in body:
         STAGE["caption"] = body["caption"]
+    if body.get("next"):
+        STAGE["next"] += 1
+    if "hint" in body:
+        STAGE["hint"] = body["hint"]
     return {"ok": True}
 
 

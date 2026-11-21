@@ -16,6 +16,9 @@
   .caption { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); max-width: 1300px; padding: 12px 22px; border-radius: 14px;
     background: rgba(5, 6, 8, .88); border: 1px solid #2a2f38; font-size: 21px; line-height: 1.4; text-align: center; color: #f3f4f6; }
   .caption:empty { display: none; }
+  .hint { position: fixed; left: 14px; bottom: 12px; font: 12px "SF Mono", Menlo, monospace; color: #a78bfa; background: #151022;
+    border: 1px solid #3b3168; border-radius: 8px; padding: 6px 10px; }
+  .hint:empty { display: none; }
 </style>
 </head>
 <body>
@@ -25,6 +28,7 @@
   </div>
   <iframe src="/console?embed=1"></iframe>
   <div class="caption" id="caption"></div>
+  <div class="hint" id="hint"></div>
 <script>
   const esc = (v) => String(v).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   async function poll() {
@@ -32,10 +36,14 @@
       const s = await (await fetch("/api/stage")).json();
       document.getElementById("lines").innerHTML = s.lines.slice(-48).map((l) => `<div class="l-${l.color}">${esc(l.text) || "&nbsp;"}</div>`).join("");
       document.getElementById("caption").textContent = s.caption;
+      document.getElementById("hint").textContent = s.hint ? `${s.hint}  ·  press → or Space` : "";
     } catch (e) {}
     setTimeout(poll, 250);
   }
   poll();
+  const next = () => fetch("/api/stage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ next: true }) });
+  addEventListener("keydown", (e) => { if (["ArrowRight", " ", "Enter", "PageDown"].includes(e.key)) { e.preventDefault(); next(); } });
+  window.addEventListener("message", (e) => { if (e.data === "mirage-next") next(); });
 </script>
 </body>
 </html>
