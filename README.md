@@ -1,8 +1,8 @@
-# Mirage
+# La Mirage
 
-Mirage sits in front of a bank's API. When a session looks like an attack, Mirage doesn't block it. It moves the
+La Mirage sits in front of a bank's API. When a session looks like an attack, La Mirage doesn't block it. It moves the
 session into a private copy of the bank and lets the attacker carry on. The copy runs the bank's real code, so any bank
-rule the attacker breaks in there is a vulnerability in production. Mirage records it, Devin fixes it, and Mirage
+rule the attacker breaks in there is a vulnerability in production. La Mirage records it, Devin fixes it, and La Mirage
 checks the fix by replaying the attacker's own requests against it.
 
 Track: Protect the big guy (code, data and infra rails).
@@ -21,20 +21,20 @@ at that first attempt, the endpoint would still be open for the next attacker, o
 1. Protection off. The attacker logs in with a deepfaked selfie, gets refused on `/v2/transfers`, switches to
    `/v1/transfers` and empties four accounts (AED 576k of real money).
 2. Protection on, same attacker. He is moved to his own shadow bank on the first transfer attempt. Inside it he sends
-   AED 1 to his own account to check the bank isn't onto him (Mirage lets that one through for real), logs in again from
+   AED 1 to his own account to check the bank isn't onto him (La Mirage lets that one through for real), logs in again from
    a fresh session, empties the account, and finds that `/v1` will also move money out of other customers' accounts.
    The other customers in the copy are synthetic. When he moves large sums out of them, the copy asks for the
    beneficiary's phone number "for compliance", and he gives up his mules' numbers. He walks away with AED 1.4M of fake
-   money; Mirage has three findings.
+   money; La Mirage has three findings.
 3. When he goes quiet, the findings go to Devin. Devin opened [PR #2](https://github.com/yaroslavabramov/cis-hackathon/pull/2)
    about a minute and a half later.
-4. Mirage boots `main` and the PR side by side in a fresh Daytona sandbox and replays each exploit. `main` returns 200,
+4. La Mirage boots `main` and the PR side by side in a fresh Daytona sandbox and replays each exploit. `main` returns 200,
    the PR returns 403 or 404 for all three.
 
 ## How it's built
 
 ```
-attacker ──► Mirage gateway ──► real bank
+attacker ──► La Mirage gateway ──► real bank
                │  risk score above 70
                ├──────────────► private shadow bank (Daytona sandbox, one per attacker)
                │                  invariant checks ──► findings ──► Devin ──► PR

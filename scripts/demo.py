@@ -45,17 +45,17 @@ def main():
 
 def run():
     os.system("clear")
-    title("MIRAGE · the attacker's laptop")
+    title("LA MIRAGE · the attacker's laptop")
     print("Target: Desert Bank, customer C-1001.")
     wait()
 
-    title("1 · TODAY: the bank without Mirage")
+    title("1 · WITHOUT LA MIRAGE")
     API.post("/api/reset"); API.post("/api/protection", json={"on": False}); time.sleep(1.5)
     attack("0.2")
     print(f"{R}{BOLD}Four accounts emptied through the legacy API. Real money.{X}")
     wait()
 
-    title("2 · WITH MIRAGE: try us")
+    title("2 · WITH LA MIRAGE")
     API.post("/api/reset"); API.post("/api/protection", json={"on": True}); time.sleep(1.5)
     attack("0.3")
     s = snap()
