@@ -270,7 +270,7 @@ function renderStage() {
   if (inc.diverted) {
     stage.innerHTML = chipsHtml(inc) + `
     <div class="banner compact ${released ? "released" : ""}">
-      <div><div class="state">${state}</div><div class="title">He thinks he is robbing the bank. He is inside a private copy of it, finding our bugs for us.</div>${meta}</div>
+      <div><div class="state">${state}</div><div class="title">The attacker is in a private copy of the bank. Any rule he breaks here is a bug in production.</div>${meta}</div>
       ${metricsHtml(inc)}
     </div>
     ${balances}

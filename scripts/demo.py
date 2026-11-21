@@ -36,13 +36,13 @@ def main():
         sys.exit("Start ./scripts/run.sh first")
     os.system("clear")
     title("MIRAGE · the attacker's laptop")
-    print("Target: Desert Bank. Biometrics, KYC and auth all pass with a deepfake.")
+    print("Target: Desert Bank, customer C-1001.")
     wait()
 
     title("1 · TODAY: the bank without Mirage")
     API.post("/api/reset"); API.post("/api/protection", json={"on": False}); time.sleep(1.5)
     attack("0.2")
-    print(f"{R}{BOLD}Real money gone. Four customers drained through a forgotten legacy API.{X}")
+    print(f"{R}{BOLD}Four accounts emptied through the legacy API. Real money.{X}")
     wait()
 
     title("2 · WITH MIRAGE: try us")

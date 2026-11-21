@@ -1,77 +1,76 @@
-# Mirage: try us
+# Mirage
 
-> Security tools either keep attackers out or train people not to be fooled. Mirage does the opposite:
-> it lets the attacker in, into a private copy of the bank, and turns him into our pentester.
+Mirage sits in front of a bank's API. When a session looks like an attack, Mirage doesn't block it. It moves the
+session into a private copy of the bank and lets the attacker carry on. The copy runs the bank's real code, so any bank
+rule the attacker breaks in there is a vulnerability in production. Mirage records it, Devin fixes it, and Mirage
+checks the fix by replaying the attacker's own requests against it.
 
-**Track:** Protect the big guy (code, data & infra rails) · CIS Hackathon, Dubai
+Track: Protect the big guy (code, data and infra rails).
 
-## The idea
+## Why not just block
 
-It's 2:00 AM. Biometrics ✓, KYC ✓, auth ✓, and accounts get drained through a forgotten legacy API.
+Risk scoring looks at behaviour: a new device, a payment at an hour the customer never pays, a first-time offshore
+payee. That tells you who looks suspicious. It doesn't tell you how they intend to get the money out.
 
-When a bank detects an attacker, it blocks him. He moves on, and the hole he was about to use stays open for the next
-attacker who doesn't look suspicious. **Detection tells you *who* is attacking. It doesn't tell you *how* they can
-break you.**
+In the demo the attacker is flagged on his first transfer attempt, which the bank rejects anyway because the payee is
+new. The hole he then uses, a legacy endpoint that skips step-up, he finds later, inside the copy. If we had blocked him
+at that first attempt, the endpoint would still be open for the next attacker, one who doesn't trip the risk rules.
 
-Mirage doesn't block. It silently moves the attacker into a **shadow bank**: the bank's real code, running in an
-isolated Daytona sandbox, with a clone of the victim's account and synthetic neighbours. He keeps "stealing". Every
-bank rule he breaks in there is a real vulnerability in production, captured with an exact reproduction. Devin fixes
-it, and Mirage proves the fix by replaying his own exploits.
+## Demo
 
-One detected attacker → a fix for every undetected one.
+1. Protection off. The attacker logs in with a deepfaked selfie, gets refused on `/v2/transfers`, switches to
+   `/v1/transfers` and empties four accounts (AED 576k of real money).
+2. Protection on, same attacker. He is moved to his own shadow bank on the first transfer attempt. Inside it he sends
+   AED 1 to his own account to check the bank isn't onto him (Mirage lets that one through for real), logs in again from
+   a fresh session, empties the account plus a planted fixed deposit, gives up his mules' phone numbers when asked for
+   "compliance" details, and finds that `/v1` will also move money out of other customers' accounts. The other
+   customers in the copy are synthetic. He walks away with AED 2.6M of fake money; Mirage has three findings.
+3. When he goes quiet, the findings go to Devin. Devin opened [PR #2](https://github.com/yaroslavabramov/cis-hackathon/pull/2)
+   about a minute and a half later.
+4. Mirage boots `main` and the PR side by side in a fresh Daytona sandbox and replays each exploit. `main` returns 200,
+   the PR returns 403 or 404 for all three.
 
-## What happens in the demo
-
-1. **Without Mirage:** a deepfaked FaceID gets a valid session; `/v2` asks for step-up, so the attacker uses the legacy
-   `/v1` API and drains four customers (AED 576k, real).
-2. **With Mirage:** the same attacker is diverted on his first transfer attempt. In his private mirage he:
-   - sends an AED 1 probe to his own account (it really goes out, so his check passes),
-   - re-logs in from a fresh session (still in the mirage, balances consistent),
-   - drains the account plus a bait fixed deposit, handing over mule phone numbers for "compliance",
-   - discovers the legacy API also lets him move money out of other customers' accounts (synthetic ones).
-
-   He "steals" AED 2.6M of fake money. Mirage records **3 real vulnerabilities**.
-3. **Devin** gets the findings once the attacker goes quiet and opens a PR
-   ([example: PR #2](https://github.com/yaroslavabramov/cis-hackathon/pull/2), ~1.5 min).
-4. **Verified:** Mirage boots `main` and the PR side by side in a fresh Daytona sandbox and replays each exploit:
-   `main → 200`, `PR → 403/404`. 3/3 blocked.
-
-## How it works
+## How it's built
 
 ```
-Attacker ──► Mirage gateway ──► Real bank
-               │ risk scoring (deterministic, explainable, no LLM in the hot path)
-               ├─ risky session ──► private shadow bank (Daytona sandbox from an autoscaling pool)
-               │                      └─ invariant checks ──► findings ──► Devin API ──► PR
-               └─ console (SSE)                                    fresh sandbox replay ◄─┘
+attacker ──► Mirage gateway ──► real bank
+               │  risk score above 70
+               ├──────────────► private shadow bank (Daytona sandbox, one per attacker)
+               │                  invariant checks ──► findings ──► Devin ──► PR
+               │                                         replay in a fresh sandbox ◄┘
+               └── console (server-sent events)
 ```
 
-| Piece | What it does |
+| File | Role |
 |---|---|
-| Risk engine (`gateway/risk.py`) | New device, unusual hour, new beneficiary, cross-border, amount spike, legacy API, step-up evasion, machine speed, honeytoken. Divert at 70. |
-| Mirage tactics (`gateway/app.py`) | Sticky sessions (his device, or any untrusted device on the account, returns to the same mirage; real customers on trusted devices never do), probe pass-through, bait account, compliance friction. |
-| Findings (`gateway/findings.py`) | Bank invariants checked on shadow traffic: step-up for new beneficiaries, debits and reads only on owned accounts. |
-| Shadow pool (`gateway/shadow.py`) | One Daytona sandbox per attacker: private preview, outbound network blocked after boot, per-run internal key. Warm pool grows with demand, idle spares switch off, idle mirages are frozen and resumed in a fresh sandbox with the same state. |
-| Devin (`gateway/devin.py`) | Findings + attack log → Devin session → PR with fix and replay tests. |
-| Verification (`gateway/verify.py`) | Replays each exploit against `main` and the PR in a fresh sandbox. |
+| `gateway/risk.py` | Deterministic risk signals with weights. No model in the request path. |
+| `gateway/app.py` | Proxy, diversion, and the shadow tactics: sticky sessions, probe pass-through, bait account, compliance friction. |
+| `gateway/findings.py` | Bank rules checked on shadow traffic: step-up before paying a new beneficiary, debits and balance reads only on the session's own accounts. |
+| `gateway/shadow.py` | Sandbox pool. Each sandbox has a private preview URL and no outbound network once the bank is running. The pool keeps a couple warm, grows with recent attacker count, switches idle spares off, and freezes a quiet attacker's mirage so it can be resumed later in a new sandbox with the same state. |
+| `gateway/devin.py` | Sends findings and the attack log to the Devin API. |
+| `gateway/verify.py` | Replays each finding against `main` and the PR. |
+| `bank/` | Toy bank with a legacy API that has two planted bugs. |
+| `attacker/` | `attack.py`, `swarm.py` (several attackers at once), `normal_traffic.py`. |
 
-## Run it
+Sticky sessions follow the attacker without catching real customers. His device always goes back to his mirage. A
+matching IP address or account only counts if the device is not one the customer has used before, so a customer on
+their own phone, even behind the same NAT, always reaches the real bank.
+
+## Running it
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env              # DEVIN_API_KEY, DEVIN_ORG_ID, DAYTONA_API_KEY (all optional)
-./scripts/run.sh                  # console: http://127.0.0.1:8000/console
-.venv/bin/python scripts/demo.py  # guided walkthrough (this terminal is the attacker's laptop)
+cp .env.example .env              # DEVIN_API_KEY, DEVIN_ORG_ID, DAYTONA_API_KEY, all optional
+./scripts/run.sh                  # console at http://127.0.0.1:8000/console
+.venv/bin/python scripts/demo.py  # the three demo steps, Enter to advance
 ```
 
-Other scripts: `attacker/attack.py` (one attacker), `attacker/swarm.py -n 3` (several at once, watch the pool scale),
-`attacker/normal_traffic.py` (background customers). Without Daytona the shadow runs as a local process; without Devin
-credentials the console falls back to replaying exploits against `DEVIN_REFERENCE_PR`.
+Without a Daytona key the shadow bank runs as a local process. Without Devin credentials, step 3 replays the exploits
+against `DEVIN_REFERENCE_PR` instead.
 
-## Honest limits
+## Limits
 
-- Only detected attackers enter the mirage. The holes they find are closed for everyone, including the ones we miss.
-- The mirage lasts until the attacker checks the receiving side or notices latency (the sandbox is slower than the
-  real bank).
-- The bait appears after a re-login; a careful attacker comparing account lists may get suspicious.
-- The toy bank's vulnerabilities are planted; the findings, the Devin PR and the replay verification are real.
+Only attackers who get flagged end up in a mirage; the bugs they find are fixed for everyone else. The deception holds
+until the attacker checks whether the money arrived, or notices that the sandbox answers slower than the real bank. The
+planted deposit only shows up after a re-login, which a careful attacker comparing account lists could spot. The bank's
+bugs are planted. The findings, the Devin PR and the replay are not.

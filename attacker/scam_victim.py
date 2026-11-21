@@ -23,11 +23,11 @@ def main():
     say(f'{D}  scammer: "Your account is compromised. Move your savings to the safe account I give you."{X}', 1.2)
     r = bank.post("/v2/auth/login", json={"customer_id": "C-1002", "device_id": "galaxys24-rahul", "biometric_score": 0.99})
     bank.headers["Authorization"] = f"Bearer {r.json()['token']}"
-    say(f"{G}  FaceID ✓ (it really is Rahul, on his own phone){X}")
+    say(f"{G}  logged in (it really is Rahul, on his own phone){X}")
     acc = bank.get("/v2/accounts").json()["accounts"][0]
     say(f"  balance AED {acc['balance']:,.2f}")
     tok = bank.post("/v2/auth/step-up", json={"device_id": "galaxys24-rahul"}).json()["step_up_token"]
-    say(f"{G}  step-up confirmed on his trusted device ✓{X}")
+    say(f"{G}  step-up confirmed on his trusted device{X}")
     r = bank.post("/v2/transfers", json={"from_account": acc["id"], "to_iban": "MU17BOMM0101101030300200000MUR",
                                          "to_name": "Kestrel Global FZE", "country": "MU", "amount": a.amount,
                                          "reference": "safe account per security officer", "step_up_token": tok})

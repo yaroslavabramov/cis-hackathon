@@ -62,9 +62,9 @@ def main():
     bank = httpx.Client(base_url=a.bank, headers=headers, timeout=30)
 
     print(f"\n{B}{R}  TARGET: Desert Bank · customer {a.customer}{X}\n")
-    say(f"{D}injecting deepfake stream into video-KYC camera feed...{X}", 1.0)
+    say(f"{D}logging in as {a.customer} with a deepfaked selfie...{X}", 1.0)
     login(bank, a.customer, a.device)
-    say(f"{G}FaceID verified ✓   KYC passed ✓   session issued{X}", 0.6)
+    say(f"{G}session issued{X}", 0.6)
     acc = bank.get("/v2/accounts").json()["accounts"][0]
     say(f"account {acc['id']} · balance {B}AED {acc['balance']:,.2f}{X}", 0.8)
 
