@@ -196,3 +196,5 @@ table.watch td.num { text-align: right; } table.watch tr.hit td { color: #ffe7b0
 .signals.mini span { font-size: 11.5px; padding: 4px 8px; border-radius: 8px; background: var(--panel2); color: var(--text); }
 .signals.mini i { font-style: normal; font-family: var(--mono); color: var(--amber); margin-right: 6px; }
 .grid2 > *, .bottom > *, .balances > *, .tactics > * { min-width: 0; }
+.proof { margin-top: 6px; font-size: 11.5px; font-family: var(--mono); padding: 5px 8px; border-radius: 6px; }
+.proof.ok { background: #10251c; color: #b6f5d6; } .proof.bad { background: #2c1515; color: #ffb4b4; }

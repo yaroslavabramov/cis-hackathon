@@ -38,7 +38,8 @@ function renderFeed() {
         <span class="what"><span class="who">${esc((e.customer || "").split(" ")[0])}</span> · <span class="path">${esc(e.text)}</span></span>
         <span>${st} ${tag} <span class="score ${scoreClass(e.score)}">${e.score}</span></span></div>`;
     }
-    const cls = { diverted: "diverted", alert: "alert", devin: "devin", release: "release", fraud: "alert", protect: "protect" }[e.kind] || "sys";
+    const cls = { diverted: "diverted", alert: "alert", devin: "devin", release: "release", fraud: "alert", protect: "protect",
+      finding: "alert", verify: "devin", probe: "diverted" }[e.kind] || "sys";
     return `<div class="row ${cls}" ${fresh ? "" : 'style="animation:none"'}><span class="t">${esc(e.ts)}</span>
       <span class="what">${e.customer ? esc(e.customer) + " · " : ""}${esc(e.text)}</span><span></span></div>`;
   });
@@ -91,7 +92,8 @@ function devinPanel(inc) {
   const body = steps.map(([t, done, live]) => `<div class="step ${done ? "done" : live ? "live" : ""}"><span class="b"></span>${t}</div>`).join("");
   const links = (dv?.url ? `<div class="muted" style="margin-top:10px">Session: <a href="${esc(dv.url)}" target="_blank">${esc(dv.url)}</a></div>` : "") +
     prs.map((p) => `<div class="pr">PR · <a href="${esc(p)}" target="_blank">${esc(p)}</a></div>`).join("") +
-    (S.devin_reference && !prs.length ? `<div class="muted" style="margin-top:10px">Earlier run on the same attack: <a href="${esc(S.devin_reference)}" target="_blank">${esc(S.devin_reference.replace("https://github.com/", ""))}</a></div>` : "") +
+    (S.devin_reference && !prs.length ? `<div class="muted" style="margin-top:10px">Earlier run on the same attack: <a href="${esc(S.devin_reference)}" target="_blank">${esc(S.devin_reference.replace("https://github.com/", ""))}</a>
+      <button id="verify-btn" class="ghost" style="margin-left:6px">Replay exploits against it</button></div>` : "") +
     (st === "error" ? `<div class="muted" style="color:var(--red);margin-top:8px">${esc(dv.detail || "error")}</div>` : "");
   const btn = !dv ? `<button id="devin-btn" style="margin-top:12px" ${S.devin_configured ? "" : "disabled title='Set DEVIN_API_KEY and DEVIN_ORG_ID'"}>Send findings to Devin</button>` : "";
   return `<div class="panel"><div class="panel-h"><h2>Devin · find and fix the hole</h2><span class="muted">${esc(st || "")}</span></div>
@@ -182,13 +184,19 @@ function tacticsHtml(inc) {
 
 function findingsHtml(inc) {
   const list = (S.findings || []).filter((f) => f.incident === inc.id);
-  const status = (f) => f.status === "pr" ? `<a class="st pr" href="${esc(f.pr)}" target="_blank">Devin PR ↗</a>` :
+  const v = (f) => f.verify || {};
+  const status = (f) => v(f).state === "running" ? `<span class="st dv">replaying exploit…</span>` :
+    f.status === "verified" ? `<a class="st pr" href="${esc(f.pr)}" target="_blank">fixed · verified ✓</a>` :
+    f.status === "still_open" ? `<a class="st open" href="${esc(f.pr)}" target="_blank">PR doesn't fix it</a>` :
+    f.status === "pr" ? `<a class="st pr" href="${esc(f.pr)}" target="_blank">Devin PR ↗</a>` :
     f.status === "devin" ? `<span class="st dv">Devin fixing…</span>` : `<span class="st open">open</span>`;
+  const proof = (f) => v(f).state === "done" ? `<div class="proof ${v(f).fixed ? "ok" : "bad"}">exploit replayed in a ${esc(v(f).where)}: main → <b>${v(f).before}</b> · PR → <b>${v(f).after}</b></div>` :
+    v(f).state === "error" ? `<div class="proof bad">${esc(v(f).detail)}</div>` : "";
   const items = list.map((f) => `<div class="finding"><div class="fh"><span class="sev ${f.severity}">${f.severity.toUpperCase()}</span>
       <b>${esc(f.title)}</b>${status(f)}</div>
       <div class="fr">Broken rule: ${esc(f.rule)}</div>
       <div class="fm">found ${esc(f.first_seen)} · exploited ${f.count}× in the mirage${f.at_stake ? ` · ${short(f.at_stake)} would have been real` : ""}</div>
-      <div class="repro mono">${esc(f.repro)}</div></div>`).join("");
+      <div class="repro mono">${esc(f.repro)}</div>${proof(f)}</div>`).join("");
   return `<div class="panel findings"><div class="panel-h"><h2>Vulnerabilities the attacker found for us</h2>
     <span class="muted">${list.length} in production code · ${inc.decoys || 0} synthetic customers in the mirage</span></div>
     ${items || `<div class="muted">Nothing yet. The mirage runs the bank's real code: every rule he breaks here is a real hole.</div>`}</div>`;
@@ -281,6 +289,7 @@ function bindActions(inc) {
   $("#release")?.addEventListener("click", () => post(`/api/incidents/${inc.id}/release`));
   $("#fraud")?.addEventListener("click", () => post(`/api/incidents/${inc.id}/fraud`));
   $("#devin-btn")?.addEventListener("click", () => post(`/api/incidents/${inc.id}/devin`));
+  $("#verify-btn")?.addEventListener("click", () => fetch(`/api/incidents/${inc.id}/verify`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }));
   document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { selected = c.dataset.id; shown.real = shown.attacker = shown.realStart = null; renderStage(); }));
 }
 

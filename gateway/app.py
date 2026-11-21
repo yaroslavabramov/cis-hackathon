@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import clock, findings, risk
+from . import clock, findings, risk, verify
 from .devin import Devin
 from .shadow import INTERNAL_KEY, make_shadow
 
@@ -421,11 +421,37 @@ async def start_devin(session: dict):
                     if f["incident"] == session["id"]:
                         f.update(status="pr", pr=prs[-1])
                 notify()
+                spawn(run_verify(session, prs[-1]))
             if prs or info.get("status") in ("exit", "error", "suspended"):
                 return
     except Exception as e:
         session["devin"].update(status="error", detail=f"{type(e).__name__}: {e}"[:200])
         event("devin", "Devin request failed", session)
+
+
+async def run_verify(session: dict, pr_url: str):
+    found = [f for f in STORE.findings.values() if f["incident"] == session["id"]]
+    for f in found:
+        f.update(pr=pr_url, verify={"state": "running"})
+    event("verify", f"Replaying the attacker's {len(found)} exploits against main and {pr_url.split('/')[-1]}...", session)
+    try:
+        out = await verify.verify(pr_url, found, session["customer_id"], session["device_id"])
+        for f in found:
+            res = out["results"][f["id"]]
+            f.update(status="verified" if res["fixed"] else "still_open", verify={"state": "done", **res, "where": out["where"]})
+        fixed = sum(out["results"][f["id"]]["fixed"] for f in found)
+        event("verify", f"{fixed}/{len(found)} exploits blocked by the PR ({out['where']}, {out['seconds']}s)", session)
+    except Exception as e:
+        for f in found:
+            f["verify"] = {"state": "error", "detail": f"{type(e).__name__}: {e}"[:160]}
+        event("verify", "Verification failed", session)
+
+
+@app.post("/api/incidents/{sid}/verify")
+async def api_verify(sid: str, body: dict):
+    session = by_id(sid)
+    spawn(run_verify(session, body.get("pr") or os.getenv("DEVIN_REFERENCE_PR", "")))
+    return {"ok": True}
 
 
 @app.get("/")

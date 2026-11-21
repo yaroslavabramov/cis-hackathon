@@ -42,7 +42,7 @@ def record(store: dict, session: dict, key: str, amount: float, method: str, pat
             "id": f"F-{len(store) + 1}", "key": key, "severity": severity, "title": title.format(ep=ep), "rule": rule,
             "endpoint": ep, "incident": session["id"], "first_seen": clock.label(), "count": 0, "at_stake": 0.0,
             "repro": f"{method} {path}" + (f" {json.dumps(evidence)}" if evidence else "") + " → 200",
-            "status": "open"}
+            "status": "open", "replay": {"method": method, "path": path, "body": evidence or None}}
     finding["count"] += 1
     finding["at_stake"] += amount
     return finding
