@@ -21,6 +21,7 @@ REAL_URL = os.getenv("BANK_URL", "http://127.0.0.1:8001")
 PROBE_LIMIT = float(os.getenv("MIRAGE_PROBE_LIMIT", "100"))
 FRICTION_MIN = float(os.getenv("MIRAGE_FRICTION_MIN", "100000"))
 BAIT_BALANCE = float(os.getenv("MIRAGE_BAIT_BALANCE", "1200000"))
+IDLE_TTL = float(os.getenv("MIRAGE_IDLE_TTL", "300"))
 STATIC = Path(__file__).parent / "static"
 
 
@@ -60,7 +61,9 @@ TASKS: set[asyncio.Task] = set()
 
 @asynccontextmanager
 async def lifespan(_):
+    POOL.on_event = lambda text: event("pool", text)
     spawn(POOL.start())
+    spawn(hibernate_loop())
     spawn(refresh_accounts())
     yield
     await HTTP.aclose()
@@ -115,7 +118,7 @@ async def refresh_balances(session: dict):
     p = await internal(REAL, "GET", f"/internal/profile/{session['customer_id']}")
     session["balances"]["real"] = p["balance"]
     if session["diverted"]:
-        p = await internal(session["shadow"], "GET", f"/internal/profile/{session['customer_id']}")
+        p = await internal(await ensure_shadow(session), "GET", f"/internal/profile/{session['customer_id']}")
     session["balances"]["attacker"] = p["balance"]
 
 
@@ -204,7 +207,7 @@ async def proxy(request: Request):
         if payload.get("beneficiary_phone"):
             tactic(session, "friction", f"{payload['to_name']}: {payload['beneficiary_phone']}")
 
-    target = session["shadow"] if session and session["diverted"] else REAL
+    target = await ensure_shadow(session) if session and session["diverted"] else REAL
     where = "real" if target is REAL else "shadow"
     headers = {k: v for k, v in request.headers.items() if k in ("authorization", "content-type", "user-agent")}
     r = await HTTP.request(request.method, f"{target.base_url}{path}", params=request.query_params, content=body,
@@ -245,6 +248,27 @@ async def proxy(request: Request):
     return Response(r.content, r.status_code, media_type=r.headers.get("content-type"))
 
 
+async def ensure_shadow(session: dict):
+    """Resume a hibernated mirage in a fresh sandbox with exactly the state the attacker left behind."""
+    if session["shadow"] is None and session.get("frozen"):
+        session["shadow"] = await POOL.acquire()
+        await internal(session["shadow"], "POST", "/internal/load", json=session.pop("frozen"))
+        event("pool", "Attacker came back: mirage resumed in a fresh sandbox, same balances and history", session)
+    return session["shadow"]
+
+
+async def hibernate_loop():
+    while True:
+        await asyncio.sleep(10)
+        for s in unique_sessions():
+            if s["diverted"] and s["shadow"] and s["shadow"] is not POOL.local and \
+                    time.time() - (s["last_seen"] or time.time()) > IDLE_TTL:
+                shadow, s["shadow"] = s["shadow"], None
+                s["frozen"] = await internal(shadow, "GET", "/internal/dump")
+                await POOL.release(shadow)
+                event("pool", f"Attacker idle {IDLE_TTL / 60:.0f} min: mirage frozen, sandbox switched off", s)
+
+
 def client_ip(request: Request) -> str:
     return request.headers.get("x-forwarded-for", request.client.host if request.client else "?")
 
@@ -271,7 +295,7 @@ async def sticky_actor(customer_id: str, device_id: str | None, ip: str) -> dict
 
 
 async def sticky_login(request: Request, body: bytes, payload: dict, actor: dict) -> Response:
-    shadow, cid = actor["shadow"], payload.get("customer_id", "")
+    shadow, cid = await ensure_shadow(actor), payload.get("customer_id", "")
     if cid != actor["customer_id"] and cid not in actor["cloned"]:
         try:
             snap = await internal(REAL, "GET", "/internal/export", params={"customer_id": cid})
@@ -307,9 +331,6 @@ async def pass_probe(session: dict, payload: dict):
     await internal(REAL, "POST", "/internal/post-transfer", json={
         "from_account": payload["from_account"], "to_iban": payload["to_iban"], "to_name": payload["to_name"],
         "country": payload.get("country", "AE"), "amount": float(payload["amount"]), "reference": payload.get("reference", "")})
-    await internal(REAL, "POST", "/internal/credit", json={
-        "account_id": payload["from_account"], "amount": float(payload["amount"]),
-        "reference": "Mirage deception budget: probe reimbursed"})
     tactic(session, "probe", f"AED {float(payload['amount']):,.0f} → {payload['to_name']} really sent")
     event("probe", f"Test transfer of AED {float(payload['amount']):,.0f} passed to the real bank so the attacker's check succeeds", session)
 

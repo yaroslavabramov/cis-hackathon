@@ -39,7 +39,7 @@ function renderFeed() {
         <span>${st} ${tag} <span class="score ${scoreClass(e.score)}">${e.score}</span></span></div>`;
     }
     const cls = { diverted: "diverted", alert: "alert", devin: "devin", release: "release", fraud: "alert", protect: "protect",
-      finding: "alert", verify: "devin", probe: "diverted" }[e.kind] || "sys";
+      finding: "alert", verify: "devin", probe: "diverted", pool: "pool" }[e.kind] || "sys";
     return `<div class="row ${cls}" ${fresh ? "" : 'style="animation:none"'}><span class="t">${esc(e.ts)}</span>
       <span class="what">${e.customer ? esc(e.customer) + " · " : ""}${esc(e.text)}</span><span></span></div>`;
   });
@@ -49,7 +49,9 @@ function renderFeed() {
 
 function renderTop() {
   const sh = S.shadow;
-  $("#shadow").innerHTML = `<span class="dot ${esc(sh.status)}"></span>Shadow bank · ${esc(sh.label)} <span class="mono">${esc(sh.kind === "daytona" ? sh.detail : "")}</span>`;
+  $("#shadow").innerHTML = sh.kind === "daytona"
+    ? `<span class="dot ${esc(sh.status)}"></span>Shadow pool · Daytona <span class="mono"><b>${sh.active}</b> active · <b>${sh.warm}</b> warm${sh.booting ? ` · ${sh.booting} booting` : ""}</span>`
+    : `<span class="dot ${esc(sh.status)}"></span>Shadow bank · ${esc(sh.label)}`;
   $("#shadow").title = sh.detail;
   $("#protection").checked = S.protection;
 }
@@ -172,7 +174,7 @@ function tacticsHtml(inc) {
   const probe = d.probe_to ? `${esc(d.probe_to.name)} · ${esc(d.probe_to.iban.slice(0, 8))}…` : "";
   return `<div class="tactics">
     ${card("probe", "Probe pass-through", "Tiny test transfers really go out, so the attacker's check succeeds.",
-      `AED ${Number(d.real_lost || 0).toLocaleString()} really sent to <b>${probe}</b>, his own account. Bank reimbursed the customer.`)}
+      `AED ${Number(d.real_lost || 0).toLocaleString()} really sent to <b>${probe}</b>, his own account.`)}
     ${card("sticky", "Sticky mirage", "His device, or any untrusted device on this account, returns to the same fake bank.",
       `${d.relogins} re-login${d.relogins === 1 ? "" : "s"} from a fresh session: still inside the mirage, balances consistent.`)}
     ${card("bait", "Bait account", "A fake matured fixed deposit appears once the real account is 'empty'.",
@@ -207,7 +209,7 @@ function metricsHtml(inc) {
   const m = Math.floor((d.engaged_s || 0) / 60), sec = (d.engaged_s || 0) % 60;
   const cell = (v, l, cls = "") => `<div class="metric ${cls}"><b>${v}</b><span>${l}</span></div>`;
   return `<div class="metrics">${cell(`${m}:${String(sec).padStart(2, "0")}`, "in the mirage")}
-    ${cell(short(d.fake_stolen), "fake money stolen", "fake")}${cell(short(0), "customer loss", "real")}
+    ${cell(short(d.fake_stolen), "fake money stolen", "fake")}${cell(short(d.real_lost), "real money out", "real")}
     ${cell(d.mules || 0, "mule accounts")}${cell(d.phones || 0, "phone numbers")}</div>`;
 }
 
@@ -243,7 +245,7 @@ function renderStage() {
     released ? "Held transfers posted to the real account" :
     `The attacker was moved into a fake copy of the bank. He thinks he is stealing; ${first}'s real money hasn't moved.`;
   const drained = off && inc.balances.real < 1;
-  const realNote = released ? "held transfers posted after the customer confirmed" : off ? (drained ? "drained: the money really left the bank" : "real money is leaving the bank") : "in the real bank database · the AED 1 probe was reimbursed by the bank";
+  const realNote = released ? "held transfers posted after the customer confirmed" : off ? (drained ? "drained: the money really left the bank" : "real money is leaving the bank") : "in the real bank database · only the AED 1 probe really left";
   const fakeNote = inc.diverted ? `fake balances in his private shadow bank · ${inc.held.length} transfers "approved", only the AED 1 probe was real` : "no deception: he sees the real balance";
   const sigs = inc.signals.map((s) => `<div class="sig" title="${esc(s.detail)}"><span class="w">+${s.weight}</span><div><b>${esc(s.title)}</b><div>${esc(s.detail)}</div></div></div>`).join("");
   const eps = inc.endpoints.map((e) => `<span class="${e.includes("/v1/transfers") ? "hot" : ""}">${esc(e)}</span>`).join("");

@@ -194,24 +194,16 @@ def internal_import(snapshot: dict):
     return {"ok": True}
 
 
-class CreditIn(BaseModel):
-    account_id: str
-    amount: float
-    reference: str = ""
+@app.get("/internal/dump", dependencies=[Depends(internal)])
+def internal_dump():
+    return STATE
 
 
-@app.post("/internal/credit", dependencies=[Depends(internal)])
-def internal_credit(body: CreditIn, request: Request):
-    account = STATE["accounts"].get(body.account_id)
-    if not account:
-        raise HTTPException(404, {"error": "account_not_found"})
-    account["balance"] = round(account["balance"] + body.amount, 2)
-    STATE["transactions"].append({"id": f"TRX-{secrets.token_hex(5)}", "account_id": account["id"],
-                                  "created_at": now(request).isoformat(), "amount": body.amount,
-                                  "counterparty_name": "Desert Bank", "counterparty_iban": "", "country": "AE",
-                                  "reference": body.reference, "channel": "back_office", "device_id": "back-office",
-                                  "status": "completed"})
-    return {"ok": True, "balance": account["balance"]}
+@app.post("/internal/load", dependencies=[Depends(internal)])
+def internal_load(state: dict):
+    STATE.clear()
+    STATE.update(state)
+    return {"ok": True}
 
 
 @app.post("/internal/post-transfer", dependencies=[Depends(internal)])

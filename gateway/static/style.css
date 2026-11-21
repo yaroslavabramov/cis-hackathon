@@ -198,3 +198,4 @@ table.watch td.num { text-align: right; } table.watch tr.hit td { color: #ffe7b0
 .grid2 > *, .bottom > *, .balances > *, .tactics > * { min-width: 0; }
 .proof { margin-top: 6px; font-size: 11.5px; font-family: var(--mono); padding: 5px 8px; border-radius: 6px; }
 .proof.ok { background: #10251c; color: #b6f5d6; } .proof.bad { background: #2c1515; color: #ffb4b4; }
+.row.pool { background: #0f1a24; border: 1px solid #1f3a52; color: #bfe0ff; }

