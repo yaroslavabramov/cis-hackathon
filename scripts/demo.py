@@ -96,9 +96,7 @@ def run():
     title("1 · TODAY: the bank blocks him")
     API.post("/api/reset"); API.post("/api/protection", json={"mode": "block"}); time.sleep(1.5)
     attack("0.3")
-    title("a week later, someone quieter")
-    run_attacker("--quiet", "--quiet-pace", "2.7", "--quiet-n", "3")
-    say("Blocked the loud one. The quiet one used the same old API. Real money.", R + BOLD, "red")
+    say("Blocked. 3 requests seen, 0 vulnerabilities learned.", D, "dim")
     wait()
 
     title("2 · WITH LA MIRAGE: same first attacker")

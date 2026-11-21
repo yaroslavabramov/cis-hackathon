@@ -289,13 +289,13 @@ function renderStage() {
     ${(() => { const acc = (S.accounts || []).find((x) => x.name === inc.name) || { balance: 0 };
       const lost = 450000 - acc.balance;
       return `<div class="balances"><div class="bal real ${lost > 1 ? "drained" : ""}"><div class="lbl">${esc(first)}'s real balance</div>
-        <div class="amt">${aed(acc.balance)}</div><div class="note">${lost > 1 ? `${short(lost)} gone through the legacy API, by someone who stayed under the threshold` : "safe, for now"}</div></div>
+        <div class="amt">${aed(acc.balance)}</div><div class="note">${lost > 1 ? `${short(lost)} gone` : "safe"}</div></div>
         <div class="bal"><div class="lbl">What the blocked attacker learned</div><div class="amt" style="font-size:22px;color:var(--amber)">403 session_blocked</div>
-        <div class="note">he moves on; the hole he was heading for stays open</div></div></div>`; })()}
+        <div class="note">he moves on to the next bank</div></div></div>`; })()}
     <div class="grid2">
       <div class="panel"><div class="panel-h"><h2>What blocking taught us</h2></div>
         <div class="learned"><div><b>${inc.log.length}</b>requests seen</div><div><b>0</b>vulnerabilities found</div><div><b>0</b>mule accounts</div></div>
-        <div class="callout">The legacy <b>/v1/transfers</b> endpoint he was about to use is still open. The next attacker who stays under the risk threshold will use it.</div></div>
+        <div class="callout">Whatever he was about to use is still in production, and we don't know what it is.</div></div>
       <div class="panel"><div class="panel-h"><h2>Why he was flagged</h2><span class="muted">risk ${inc.score} · threshold ${S.threshold}</span></div>
         <div class="signals compact">${inc.signals.map((g) => `<div class="sig" title="${esc(g.detail)}"><span class="w">+${g.weight}</span><div><b>${esc(g.title)}</b><div>${esc(g.detail)}</div></div></div>`).join("")}</div></div>
     </div>`;
