@@ -140,7 +140,7 @@ async def divert(session: dict):
     STORE.incident_id = session["id"]
     event("diverted", f"Session diverted into the shadow bank (risk {session['score']})", session)
     if DEVIN.configured and os.getenv("DEVIN_AUTO", "1") == "1":
-        spawn(start_devin(session))
+        spawn(devin_when_quiet(session))
 
 
 def bearer(request: Request) -> str:
@@ -398,6 +398,16 @@ def snapshot() -> dict:
             "findings": list(STORE.findings.values()), "incident": incident_view(incident) if incident else None}
 
 
+async def devin_when_quiet(session: dict, quiet: float = 8, limit: float = 300):
+    started = time.time()
+    while time.time() - started < limit:
+        await asyncio.sleep(2)
+        idle = time.time() - (session["last_seen"] or started)
+        if idle >= quiet and any(f["incident"] == session["id"] for f in STORE.findings.values()):
+            event("devin", f"Attacker quiet for {quiet:.0f}s: sending findings to Devin", session)
+            return await start_devin(session)
+
+
 async def start_devin(session: dict):
     session["devin"] = {"status": "starting", "url": None, "prs": [], "started_at": clock.label()}
     notify()
@@ -501,7 +511,7 @@ async def api_protection(body: dict):
 @app.post("/api/reset")
 async def api_reset():
     for task in list(TASKS):
-        if task.get_coro().__name__ == "start_devin":
+        if task.get_coro().__name__ in ("start_devin", "devin_when_quiet", "run_verify"):
             task.cancel()
     protection = STORE.protection
     STORE.reset()

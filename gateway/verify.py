@@ -97,7 +97,8 @@ async def replay(url: str, headers: dict, finding: dict, customer_id: str, devic
         r = await c.post("/v2/auth/login", json={"customer_id": customer_id, "device_id": device_id, "biometric_score": 0.998})
         auth = {"Authorization": f"Bearer {r.json()['token']}"}
         rp = finding["replay"]
-        r = await c.request(rp["method"], rp["path"], json=rp["body"] or None, headers=auth)
+        body = {**rp["body"], "amount": 1.0} if rp["body"] and "amount" in rp["body"] else rp["body"]
+        r = await c.request(rp["method"], rp["path"], json=body or None, headers=auth)
         return r.status_code
 
 
