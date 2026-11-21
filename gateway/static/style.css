@@ -210,3 +210,25 @@ table.watch td.num { text-align: right; } table.watch tr.hit td { color: #ffe7b0
 .finding { padding: 8px 11px; } .findings { gap: 8px; }
 .col .steps { gap: 5px; } .col .step { font-size: 12.5px; } .col .step .b { width: 14px; height: 14px; }
 .col .pr { margin-top: 8px; padding: 6px 10px; }
+
+.map svg { width: 100%; height: auto; display: block; }
+.map .nb rect { fill: var(--panel2); stroke: var(--line); }
+.map text { fill: var(--text); font-size: 13px; } .map text.m { fill: var(--muted); font-size: 11px; }
+.map text.r { font-family: var(--mono); font-size: 11.5px; fill: var(--muted); } .map text.r.hi { fill: var(--red); }
+.map text.st { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); letter-spacing: .06em; }
+.map .nb.attacker rect { stroke: #6b2a2a; fill: #1f1012; }
+.map .nb.gw rect { fill: #141022; stroke: #4c3d86; } .map .nb.gw text { font-weight: 700; letter-spacing: .04em; }
+.map .nb.d-real rect { stroke: #1e5a40; fill: #0f1f19; }
+.map .nb.d-active rect { stroke: #8b6cff; fill: #221a3b; } .map .nb.d-active text.st { fill: var(--mirage); }
+.map .nb.d-warm rect { stroke: #2f3540; } .map .nb.d-warm text.st { fill: var(--green); }
+.map .nb.d-booting rect { stroke: #6b5520; stroke-dasharray: 5 4; } .map .nb.d-booting text.st { fill: var(--amber); }
+.map .nb.d-frozen rect { stroke: #2a4a66; stroke-dasharray: 3 3; fill: #0f1a24; } .map .nb.d-frozen text.st { fill: #8ec5ff; }
+.lk { fill: none; stroke-width: 2.5; opacity: .75; }
+.lk.real { stroke: var(--green); } .lk.shadow { stroke: var(--mirage); stroke-width: 3.5; } .lk.frozen { stroke: #5b7fa3; stroke-dasharray: 3 5; }
+.lk.busy { stroke-dasharray: 8 6; animation: flowdash .5s linear 8; opacity: 1; }
+@keyframes flowdash { to { stroke-dashoffset: -14; } }
+.legend { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; margin-left: 8px; }
+.legend i.g { background: var(--green); } .legend i.v { background: var(--mirage); } .legend i.f { background: #5b7fa3; }
+.idle { padding-top: 6px; gap: 14px; }
+main { grid-template-columns: 320px 1fr; }

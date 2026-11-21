@@ -174,6 +174,7 @@ async def proxy(request: Request):
     STORE.requests += 1
 
     if session:
+        session["last_req"] = time.time()
         risk.on_request(session, request.headers)
         if is_transfer:
             risk.on_transfer(session, await profile(session["customer_id"]), path, payload)
@@ -427,6 +428,33 @@ def incident_view(session: dict) -> dict:
             "endpoints": endpoints, "log": session["log"][-30:]}
 
 
+def topology() -> dict:
+    now, local = time.time(), POOL.local
+    owners = {id(s["shadow"]): s for s in unique_sessions() if s["shadow"] is not None}
+    sessions, latest = [], {}
+    for s in sorted(unique_sessions(), key=lambda x: x.get("last_req", 0)):
+        if s["kind"] or now - s.get("last_req", 0) < 120:
+            latest[s["id"] if s["kind"] else (s["customer_id"], s["device_id"])] = s
+    for s in latest.values():
+        route = ("shadow" if s["shadow"] is not None else "frozen") if s["diverted"] else "real"
+        box = None
+        if route == "shadow":
+            box = "local" if s["shadow"] is local else s["shadow"].detail
+        elif route == "frozen":
+            box = f"frozen-{s['id']}"
+        sessions.append({"id": s["id"], "name": s["name"], "device": s["device_id"], "score": s["score"],
+                         "kind": s["kind"], "route": route, "box": box, "busy": now - s.get("last_req", 0) < 4})
+    boxes = []
+    if POOL.daytona:
+        boxes += [{"id": sh.detail, "state": "active", "who": owners.get(id(sh), {}).get("name")} for sh in POOL.active]
+        boxes += [{"id": sh.detail, "state": "warm" if sh.status == "ready" else "booting"} for sh in POOL.spares]
+    else:
+        boxes.append({"id": "local", "state": "active" if any(x["route"] == "shadow" for x in sessions) else "warm",
+                      "who": next((x["name"] for x in sessions if x["route"] == "shadow"), None)})
+    boxes += [{"id": f"frozen-{x['id']}", "state": "frozen", "who": x["name"]} for x in sessions if x["route"] == "frozen"]
+    return {"sessions": sessions, "boxes": boxes}
+
+
 def snapshot() -> dict:
     incident = next((s for s in unique_sessions() if s["id"] == STORE.incident_id), None)
     return {"clock": clock.now().isoformat(), "protection": STORE.protection, "threshold": risk.THRESHOLD,
@@ -439,7 +467,7 @@ def snapshot() -> dict:
                                  "status": s["status"]} for s in unique_sessions()), key=lambda s: -s["score"]),
             "events": list(STORE.events)[-80:], "accounts": STORE.accounts, "mules": list(STORE.mules.values()),
             "incidents": [incident_view(s) for s in unique_sessions() if s["kind"]],
-            "findings": list(STORE.findings.values()), "incident": incident_view(incident) if incident else None}
+            "findings": list(STORE.findings.values()), "topology": topology(), "incident": incident_view(incident) if incident else None}
 
 
 async def devin_when_quiet(session: dict, quiet: float = 8, limit: float = 300):

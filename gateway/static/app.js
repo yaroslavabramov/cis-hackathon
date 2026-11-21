@@ -216,13 +216,49 @@ function metricsHtml(inc) {
     ${cell(d.mules || 0, "mule accounts")}${cell(d.phones || 0, "phone numbers")}</div>`;
 }
 
+function mapHtml() {
+  const T = S.topology || { sessions: [], boxes: [] };
+  const sess = T.sessions.slice().sort((a, b) => (b.kind ? 1 : 0) - (a.kind ? 1 : 0) || b.score - a.score);
+  const sub = (b) => ({ active: b.who ? `attacker on ${b.who.split(" ")[0]}'s account` : "attacker inside",
+    warm: "warm, waiting for the next attacker", booting: "booting…",
+    frozen: `${(b.who || "").split(" ")[0]}'s attacker went quiet · sandbox off, state saved` })[b.state];
+  const dests = [{ id: "real", state: "real", label: "Real bank", sub: `${(S.accounts || []).length} customers · real money` }]
+    .concat(T.boxes.map((b) => ({ id: b.id, state: b.state, sub: sub(b),
+      label: b.state === "frozen" ? "Frozen mirage" : b.id === "local" ? "Shadow bank (local)" : `Sandbox ${b.id}` })));
+  const rowH = 40, H = Math.max(sess.length, dests.length, 2) * rowH + 6, W = 1100;
+  const S0 = 0, S1 = 300, G0 = 400, G1 = 560, D0 = 680;
+  const sy = (i) => 4 + i * rowH, mid = (i) => sy(i) + 16;
+  const destIndex = (x) => x.route === "real" ? 0 : Math.max(0, dests.findIndex((d) => d.id === x.box));
+  const links = sess.map((x, i) => {
+    const j = destIndex(x), cls = x.route === "real" ? "real" : x.route === "frozen" ? "frozen" : "shadow";
+    return `<path class="lk ${cls} ${x.busy ? "busy" : ""}" d="M${S1} ${mid(i)} L${G0} ${mid(i)}"/>
+      <path class="lk ${cls} ${x.busy ? "busy" : ""}" d="M${G1} ${mid(i)} C ${G1 + 60} ${mid(i)}, ${D0 - 60} ${mid(j)}, ${D0} ${mid(j)}"/>`;
+  }).join("");
+  const sessBoxes = sess.map((x, i) => {
+    const who = x.kind === "attacker" ? `Attacker on ${x.name.split(" ")[0]}'s account` : x.kind === "victim" ? `${x.name.split(" ")[0]} (scam victim)` : `${x.name.split(" ")[0]} · customer`;
+    return `<g class="nb ${x.kind || "cust"}"><rect x="${S0}" y="${sy(i)}" width="${S1 - S0}" height="32" rx="8"/>
+      <text x="${S0 + 12}" y="${sy(i) + 14}">${esc(who)}</text>
+      <text class="m" x="${S0 + 12}" y="${sy(i) + 27}">${esc(x.device)}</text>
+      <text class="r ${x.score >= S.threshold ? "hi" : ""}" x="${S1 - 12}" y="${sy(i) + 21}" text-anchor="end">risk ${x.score}</text></g>`;
+  }).join("");
+  const destBoxes = dests.map((d, j) => `<g class="nb d-${d.state}"><rect x="${D0}" y="${sy(j)}" width="${W - D0 - 2}" height="32" rx="8"/>
+      <text x="${D0 + 12}" y="${sy(j) + 14}">${esc(d.label)}</text><text class="m" x="${D0 + 12}" y="${sy(j) + 27}">${esc(d.sub)}</text>
+      <text class="st" x="${W - 14}" y="${sy(j) + 21}" text-anchor="end">${d.state === "real" ? "" : d.state.toUpperCase()}</text></g>`).join("");
+  const gw = `<g class="nb gw"><rect x="${G0}" y="2" width="${G1 - G0}" height="${H - 4}" rx="10"/>
+    <text x="${(G0 + G1) / 2}" y="${H / 2 - 4}" text-anchor="middle">Mirage gateway</text>
+    <text class="m" x="${(G0 + G1) / 2}" y="${H / 2 + 12}" text-anchor="middle">risk ≥ ${S.threshold} → sandbox</text></g>`;
+  return `<div class="panel map"><div class="panel-h"><h2>Where every session is going right now</h2>
+    <span class="legend"><i class="g"></i>real bank <i class="v"></i>private sandbox <i class="f"></i>frozen</span></div>
+    <svg viewBox="0 0 ${W} ${H}">${links}${sessBoxes}${gw}${destBoxes}</svg></div>`;
+}
+
 function renderStage() {
   const stage = $("#stage"), inc = pickIncident();
   if (!inc) {
     shown.real = shown.attacker = shown.realStart = null;
     const rows = (S.accounts || []).map((a) => `<tr><td>${esc(a.name)}</td><td class="mono muted">${esc(a.account)}</td>
       <td class="mono num">${aed(a.balance)}</td></tr>`).join("");
-    stage.innerHTML = `<div class="idle">
+    stage.innerHTML = mapHtml() + `<div class="idle">
       <div class="big">Desert Bank · night shift</div>
       <div class="prot ${S.protection ? "on" : "off"}">Mirage protection is ${S.protection ? "ON" : "OFF"}</div>
       <div class="panel accounts"><div class="panel-h"><h2>Customer accounts (real balances)</h2><span class="muted">${S.stats.requests} requests seen</span></div>
@@ -271,14 +307,14 @@ function renderStage() {
       <div><div class="state">${state}</div><div class="title">The attacker is in a private copy of the bank. Any rule he breaks here is a bug in production.</div>${meta}</div>
       ${metricsHtml(inc)}
     </div>
+    ${mapHtml()}
     ${balances}
-    ${tacticsHtml(inc)}
     <div class="main2">
       ${findingsHtml(inc)}
-      <div class="col">${devinPanel(inc)}
-        <div class="panel flow"><div class="panel-h"><h2>Where he tried to send the money</h2><span class="muted">${inc.destinations.length} mule accounts</span></div>${flowSvg(inc)}</div>
-      </div>
+      <div class="col">${devinPanel(inc)}</div>
     </div>
+    ${tacticsHtml(inc)}
+    <div class="panel flow"><div class="panel-h"><h2>Where he tried to send the money</h2><span class="muted">${inc.destinations.length} mule accounts</span></div>${flowSvg(inc)}</div>
     <div class="grid2">
       <div class="panel"><div class="panel-h"><h2>Why he was flagged</h2><span class="muted">risk ${inc.score} · threshold ${S.threshold}</span></div>
         <div class="signals compact">${sigs}</div></div>
@@ -290,6 +326,7 @@ function renderStage() {
       <div><div class="state">${state}</div><div class="title">${title}</div>${meta}</div>
       <div class="gauge" style="--v:${inc.score};--c:var(--red)"><span>${inc.score}</span><small>RISK</small></div>
     </div>
+    ${mapHtml()}
     ${balances}
     <div class="grid2">
       <div class="panel"><div class="panel-h"><h2>Mirage saw it coming</h2><span class="muted">threshold ${S.threshold}</span></div>
