@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -40,16 +41,26 @@ class DaytonaShadow:
 
     def _boot(self):
         from daytona import Daytona
-        from daytona.v0 import CreateSandboxFromSnapshotParams, SessionExecuteRequest
+        from daytona.v0 import CreateSandboxFromSnapshotParams, ListSandboxesQuery, SessionExecuteRequest
 
-        sandbox = Daytona().v0.create(CreateSandboxFromSnapshotParams(
-            language="python", public=True, auto_stop_interval=0, labels={"app": "mirage-shadow-bank"}))
+        client, labels = Daytona().v0, {"app": "mirage-shadow-bank"}
+        existing = list(client.list(ListSandboxesQuery(labels=labels)))
+        sandbox = next((s for s in existing if getattr(s.state, "value", s.state) == "started"), None)
+        for old in existing:
+            if old is not sandbox:
+                client.delete(old)
+        if sandbox:
+            sandbox.process.exec("pkill -f '[u]vicorn bank.app' || true")
+        else:
+            sandbox = client.create(CreateSandboxFromSnapshotParams(
+                language="python", public=True, auto_stop_interval=120, labels=labels))
         self.detail = f"sandbox {sandbox.id[:8]}"
         for f in ("__init__.py", "app.py", "seed.py"):
             sandbox.fs.upload_file((BANK_DIR / f).read_bytes(), f"mirage/bank/{f}")
         sandbox.process.exec("pip install -q fastapi==0.162.7 uvicorn==0.54.0", timeout=300)
-        sandbox.process.create_session("bank")
-        sandbox.process.execute_session_command("bank", SessionExecuteRequest(
+        session_id = f"bank-{int(time.time())}"
+        sandbox.process.create_session(session_id)
+        sandbox.process.execute_session_command(session_id, SessionExecuteRequest(
             command=f"cd mirage && BANK_MODE=shadow BANK_INTERNAL_KEY={INTERNAL_KEY} "
                     "python -m uvicorn bank.app:app --host 0.0.0.0 --port 8002", run_async=True))
         link = sandbox.get_preview_link(8002)
