@@ -35,6 +35,15 @@ def main():
         snap()
     except httpx.HTTPError:
         sys.exit("Start ./scripts/run.sh first")
+    traffic = subprocess.Popen([sys.executable, os.path.join(ROOT, "attacker", "normal_traffic.py"), "--interval", "2"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        run()
+    finally:
+        traffic.terminate()
+
+
+def run():
     os.system("clear")
     title("MIRAGE · the attacker's laptop")
     print("Target: Desert Bank, customer C-1001.")
