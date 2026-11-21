@@ -555,7 +555,7 @@ async def api_verify(sid: str, body: dict):
     return {"ok": True}
 
 
-STAGE = {"lines": [], "caption": "", "next": 0, "hint": ""}
+STAGE = {"lines": [], "caption": "", "next": 0, "hint": "", "epoch": 0}
 
 
 @app.get("/stage")
@@ -565,7 +565,8 @@ def stage_page():
 
 @app.get("/api/stage")
 def stage_get():
-    return {"lines": STAGE["lines"][-60:], "caption": STAGE["caption"], "next": STAGE["next"], "hint": STAGE["hint"]}
+    return {"lines": STAGE["lines"][-400:], "caption": STAGE["caption"], "next": STAGE["next"], "hint": STAGE["hint"],
+            "epoch": STAGE["epoch"]}
 
 
 @app.post("/api/stage")
@@ -628,7 +629,9 @@ async def api_protection(body: dict):
 
 
 @app.post("/api/reset")
-async def api_reset():
+async def api_reset(keep_stage: bool = False):
+    if not keep_stage:
+        STAGE.update(lines=[], caption="", hint="", epoch=STAGE["epoch"] + 1)
     for task in list(TASKS):
         if task.get_coro().__name__ in ("start_devin", "devin_when_quiet", "run_verify"):
             task.cancel()

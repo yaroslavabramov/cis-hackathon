@@ -40,6 +40,19 @@ NEXT_HINTS = iter(["next: 1 · today, the bank blocks", "next: 2 · same attacke
                    "next: 3 · Devin fixes, we replay", "next: the end"])
 
 
+EPOCH = None
+TRAFFIC = None
+
+
+def restart_if_reset():
+    """The console's Reset button bumps the stage epoch: start the walkthrough over."""
+    if API.get("/api/stage").json()["epoch"] != EPOCH:
+        print(f"{D}reset pressed: restarting the demo{X}", flush=True)
+        if TRAFFIC:
+            TRAFFIC.terminate()
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 def wait(prompt: str = "Enter ▸"):
     """Advance on → / Space in the stage page, or Enter in this terminal."""
     start = API.get("/api/stage").json()["next"]
@@ -49,6 +62,7 @@ def wait(prompt: str = "Enter ▸"):
         threading.Thread(target=lambda: (sys.stdin.readline(), pressed.set()), daemon=True).start()
     print(f"{D}{prompt} (or → in the browser){X}", flush=True)
     while not pressed.is_set() and API.get("/api/stage").json()["next"] == start:
+        restart_if_reset()
         time.sleep(0.2)
     API.post("/api/stage", json={"hint": ""})
 
@@ -78,29 +92,32 @@ def main():
         snap()
     except httpx.HTTPError:
         sys.exit("Start ./scripts/run.sh first")
-    traffic = subprocess.Popen([sys.executable, os.path.join(ROOT, "attacker", "normal_traffic.py"), "--interval", "2"],
+    global TRAFFIC
+    TRAFFIC = subprocess.Popen([sys.executable, os.path.join(ROOT, "attacker", "normal_traffic.py"), "--interval", "2"],
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         run()
     finally:
-        traffic.terminate()
+        TRAFFIC.terminate()
 
 
 def run():
+    global EPOCH
     os.system("clear")
     API.post("/api/stage", json={"clear": True})
+    EPOCH = API.get("/api/stage").json()["epoch"]
     title("LA MIRAGE · the attacker's laptop")
     say("Target: Desert Bank, customer C-1001.")
     wait()
 
     title("1 · TODAY: the bank blocks him")
-    API.post("/api/reset"); API.post("/api/protection", json={"mode": "block"}); time.sleep(1.5)
+    API.post("/api/reset", params={"keep_stage": "true"}); API.post("/api/protection", json={"mode": "block"}); time.sleep(1.5)
     attack("0.3")
     say("Blocked. 3 requests seen, 0 vulnerabilities learned.", D, "dim")
     wait()
 
     title("2 · WITH LA MIRAGE: same first attacker")
-    API.post("/api/reset"); API.post("/api/protection", json={"mode": "mirage"}); time.sleep(1.5)
+    API.post("/api/reset", params={"keep_stage": "true"}); API.post("/api/protection", json={"mode": "mirage"}); time.sleep(1.5)
     attack("0.3")
     s = snap()
     inc, found = s["incident"], s["findings"]
@@ -117,6 +134,7 @@ def run():
     API.post(f"/api/incidents/{sid}/verify", json={})
     shown_live, started, printed = False, time.time(), set()
     while time.time() - started < float(os.getenv("DEMO_DEVIN_WAIT", "75")):
+        restart_if_reset()
         s = snap()
         dv, found = s["incident"]["devin"] or {}, s["findings"]
         states = [(f.get("verify") or {}).get("state") for f in found]
