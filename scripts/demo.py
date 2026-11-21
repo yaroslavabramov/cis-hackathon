@@ -22,6 +22,7 @@ def wait(prompt: str = "Enter ▸"):
 
 
 def attack(pace: str):
+    pace = str(float(pace) * float(os.getenv("DEMO_PACE", "1")))
     subprocess.run([sys.executable, os.path.join(ROOT, "attacker", "attack.py"), "--pace", pace], check=False)
 
 
