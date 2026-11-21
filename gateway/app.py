@@ -573,6 +573,11 @@ async def api_verify(sid: str, body: dict):
 STAGE = {"lines": [], "caption": "", "next": 0, "hint": "", "epoch": 0}
 
 
+@app.get("/slides")
+def slides_page():
+    return FileResponse(STATIC / "slides.html")
+
+
 @app.get("/stage")
 def stage_page():
     return FileResponse(STATIC / "stage.html")
