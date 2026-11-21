@@ -1,6 +1,7 @@
 """Stage walkthrough. This terminal is the attacker's laptop; the browser is the bank's Mirage console.
 Every step waits for Enter. Needs ./scripts/run.sh running (DEVIN_AUTO=1 for a live Devin run)."""
 import os
+import re
 import subprocess
 import sys
 import time
@@ -13,17 +14,45 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 C, D, G, R, BOLD, X = "\033[96m", "\033[2m", "\033[92m", "\033[91m", "\033[1m", "\033[0m"
 
 
+COLORS = {"92": "green", "91": "red", "93": "yellow", "96": "cyan", "2": "dim"}
+
+
+def stage(text: str, color: str = ""):
+    try:
+        API.post("/api/stage", json={"line": {"text": text, "color": color}})
+    except httpx.HTTPError:
+        pass
+
+
+def say(text: str, ansi: str = "", color: str = ""):
+    print(f"{ansi}{text}{X}", flush=True)
+    stage(text, color)
+
+
 def title(text: str):
     print(f"\n{BOLD}{C}━━ {text} {'━' * max(0, 60 - len(text))}{X}\n", flush=True)
+    stage("")
+    stage(f"━━ {text}", "title")
 
 
 def wait(prompt: str = "Enter ▸"):
     input(f"{D}{prompt}{X}")
 
 
+def run_attacker(*args: str):
+    p = subprocess.Popen([sys.executable, "-u", os.path.join(ROOT, "attacker", "attack.py"), *args],
+                         stdout=subprocess.PIPE, text=True)
+    for line in p.stdout:
+        line = line.rstrip("\n")
+        print(line, flush=True)
+        codes = re.findall(r"\x1b\[(\d+)m", line.split("]", 1)[-1] if line.startswith("\x1b[2m[") else line)
+        color = next((COLORS[c] for c in codes if c in COLORS and c != "2"), "dim" if "2" in codes else "")
+        stage(re.sub(r"\x1b\[[0-9;]*m", "", line), color)
+    p.wait()
+
+
 def attack(pace: str):
-    pace = str(float(pace) * float(os.getenv("DEMO_PACE", "1")))
-    subprocess.run([sys.executable, os.path.join(ROOT, "attacker", "attack.py"), "--pace", pace], check=False)
+    run_attacker("--pace", str(float(pace) * float(os.getenv("DEMO_PACE", "1"))))
 
 
 def snap() -> dict:
@@ -45,19 +74,20 @@ def main():
 
 def run():
     os.system("clear")
+    API.post("/api/stage", json={"clear": True})
     title("LA MIRAGE · the attacker's laptop")
-    print("Target: Desert Bank, customer C-1001.")
+    say("Target: Desert Bank, customer C-1001.")
     wait()
 
     title("1 · TODAY: the bank blocks him")
     API.post("/api/reset"); API.post("/api/protection", json={"mode": "block"}); time.sleep(1.5)
     attack("0.3")
-    print(f"{D}Blocked. The bank never learned how he planned to get the money out.{X}")
+    say("Blocked. The bank never learned how he planned to get the money out.", D, "dim")
     wait()
 
     title("1b · A week later: someone quieter")
-    subprocess.run([sys.executable, os.path.join(ROOT, "attacker", "attack.py"), "--quiet", "--quiet-pace", "2.7"], check=False)
-    print(f"{R}{BOLD}Under the risk threshold, through the same legacy API. Real money.{X}")
+    run_attacker("--quiet", "--quiet-pace", "2.7")
+    say("Under the risk threshold, through the same legacy API. Real money.", R + BOLD, "red")
     wait()
 
     title("2 · WITH LA MIRAGE: same first attacker")
@@ -65,16 +95,16 @@ def run():
     attack("0.3")
     s = snap()
     inc, found = s["incident"], s["findings"]
-    print(f"{G}{BOLD}He 'stole' AED {inc['deception']['fake_stolen']:,.0f}. Real money out: AED {inc['deception']['real_lost']:,.0f} (his own probe).{X}")
-    print(f"{G}{BOLD}He found {len(found)} real vulnerabilities for us.{X}")
+    say(f"He 'stole' AED {inc['deception']['fake_stolen']:,.0f} of fake money. Real money out: AED {inc['deception']['real_lost']:,.0f}, to his own account.", G + BOLD, "green")
+    say(f"He found {len(found)} real vulnerabilities for us.", G + BOLD, "green")
     wait()
 
     title("3 · DEVIN fixes what he found, Mirage replays his exploits")
     s = snap()
     dv, sid = s["incident"]["devin"] or {}, s["incident"]["id"]
     if dv.get("url"):
-        print(f"{C}Devin is fixing it live: {dv['url']}{X}")
-    print(f"{D}replaying his exploits against Devin's PR for this same attack (made earlier today)...{X}")
+        say(f"Devin is fixing it live: {dv['url']}", C, "cyan")
+    say("replaying his exploits against Devin's fix for this attack...", D, "dim")
     API.post(f"/api/incidents/{sid}/verify", json={})
     shown_live, started, printed = False, time.time(), set()
     while time.time() - started < float(os.getenv("DEMO_DEVIN_WAIT", "75")):
@@ -84,12 +114,11 @@ def run():
         if found and all(st == "done" for st in states) and found[0].get("pr") not in printed:
             printed.add(found[0].get("pr"))
             fixed = sum(f["status"] == "verified" for f in found)
-            print(f"{G}{BOLD}{fixed}/{len(found)} of his exploits blocked by the fix · main → 200, PR → 403/404 "
-                  f"({found[0]['verify']['where']}){X}")
+            say(f"{fixed}/{len(found)} of his exploits blocked by the fix: before 200, after 403/404", G + BOLD, "green")
             if not s["devin_auto"] or shown_live:
                 break
         if dv.get("prs") and not shown_live:
-            print(f"{C}{BOLD}Live Devin PR just landed: {dv['prs'][-1]} · replaying his exploits against it...{X}")
+            say(f"Live Devin PR just landed: {dv['prs'][-1]} · replaying his exploits against it...", C + BOLD, "cyan")
             shown_live = True
         time.sleep(3)
     else:

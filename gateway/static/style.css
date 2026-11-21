@@ -244,3 +244,4 @@ main { grid-template-columns: 320px 1fr; }
 .learned { display: flex; gap: 12px; } .learned div { flex: 1; background: var(--panel2); border-radius: 12px; padding: 12px; color: var(--muted); font-size: 12px; }
 .learned b { display: block; font-family: var(--mono); font-size: 26px; color: var(--text); }
 .lk.blocked { stroke: var(--amber); stroke-width: 3; } .map text.x { fill: var(--amber); font-size: 16px; font-weight: 700; } .legend i.b { background: var(--amber); }
+body.embed main { grid-template-columns: 1fr; } body.embed .feed { display: none; }
