@@ -68,7 +68,7 @@ def customer_accounts(customer_id: str) -> list[dict]:
 
 def execute_transfer(request: Request, session: dict, body: TransferIn, channel: str) -> dict:
     account = STATE["accounts"].get(body.from_account)
-    if not account or (channel != "api_v1" and account["owner"] != session["customer_id"]):
+    if not account or account["owner"] != session["customer_id"]:
         raise HTTPException(404, {"error": "account_not_found"})
     if body.amount <= 0:
         raise HTTPException(422, {"error": "invalid_amount"})
@@ -123,12 +123,16 @@ def transactions_v2(account_id: str, limit: int = 20, session: dict = Depends(cu
     return {"transactions": txs[-limit:][::-1]}
 
 
-@app.post("/v2/transfers")
-def transfer_v2(body: TransferIn, request: Request, session: dict = Depends(current_session)):
+def require_step_up_for_new_beneficiary(session: dict, body: TransferIn):
     known = {b["iban"] for b in STATE["beneficiaries"].get(session["customer_id"], [])}
     if body.to_iban not in known and (not body.step_up_token or body.step_up_token != session["step_up_token"]):
         raise HTTPException(403, {"error": "step_up_required",
                                   "message": "New beneficiary must be confirmed in the app on a trusted device"})
+
+
+@app.post("/v2/transfers")
+def transfer_v2(body: TransferIn, request: Request, session: dict = Depends(current_session)):
+    require_step_up_for_new_beneficiary(session, body)
     return execute_transfer(request, session, body, "api_v2")
 
 
@@ -136,13 +140,14 @@ def transfer_v2(body: TransferIn, request: Request, session: dict = Depends(curr
 @app.get("/v1/accounts/{account_id}/balance")
 def balance_v1(account_id: str, session: dict = Depends(current_session)):
     account = STATE["accounts"].get(account_id)
-    if not account:
+    if not account or account["owner"] != session["customer_id"]:
         raise HTTPException(404, {"error": "account_not_found"})
     return {"account_id": account_id, "balance": account["balance"], "currency": "AED"}
 
 
 @app.post("/v1/transfers")
 def transfer_v1(body: TransferIn, request: Request, session: dict = Depends(current_session)):
+    require_step_up_for_new_beneficiary(session, body)
     return execute_transfer(request, session, body, "api_v1")
 
 
