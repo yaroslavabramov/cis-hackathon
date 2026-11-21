@@ -83,7 +83,7 @@ function devinPanel(inc) {
   const prs = dv?.prs || [];
   const st = dv?.status;
   const steps = [
-    ["Attack log captured by Mirage", !!inc.log.length, false],
+    [`${(S.findings || []).filter((f) => f.incident === inc.id).length || "No"} findings + attack log captured`, !!inc.log.length, false],
     ["Devin session started", !!dv?.url, dv && !dv.url && st !== "error"],
     ["Root cause & fix in progress", prs.length > 0, !!dv?.url && !prs.length && !["exit", "error"].includes(st)],
     ["Pull request with regression test", prs.length > 0, false],
@@ -93,7 +93,7 @@ function devinPanel(inc) {
     prs.map((p) => `<div class="pr">PR · <a href="${esc(p)}" target="_blank">${esc(p)}</a></div>`).join("") +
     (S.devin_reference && !prs.length ? `<div class="muted" style="margin-top:10px">Earlier run on the same attack: <a href="${esc(S.devin_reference)}" target="_blank">${esc(S.devin_reference.replace("https://github.com/", ""))}</a></div>` : "") +
     (st === "error" ? `<div class="muted" style="color:var(--red);margin-top:8px">${esc(dv.detail || "error")}</div>` : "");
-  const btn = !dv ? `<button id="devin-btn" style="margin-top:12px" ${S.devin_configured ? "" : "disabled title='Set DEVIN_API_KEY and DEVIN_ORG_ID'"}>Send attack log to Devin</button>` : "";
+  const btn = !dv ? `<button id="devin-btn" style="margin-top:12px" ${S.devin_configured ? "" : "disabled title='Set DEVIN_API_KEY and DEVIN_ORG_ID'"}>Send findings to Devin</button>` : "";
   return `<div class="panel"><div class="panel-h"><h2>Devin · find and fix the hole</h2><span class="muted">${esc(st || "")}</span></div>
     <div class="steps">${body}</div>${links}${btn}</div>`;
 }
@@ -180,6 +180,20 @@ function tacticsHtml(inc) {
   </div>`;
 }
 
+function findingsHtml(inc) {
+  const list = (S.findings || []).filter((f) => f.incident === inc.id);
+  const status = (f) => f.status === "pr" ? `<a class="st pr" href="${esc(f.pr)}" target="_blank">Devin PR ↗</a>` :
+    f.status === "devin" ? `<span class="st dv">Devin fixing…</span>` : `<span class="st open">open</span>`;
+  const items = list.map((f) => `<div class="finding"><div class="fh"><span class="sev ${f.severity}">${f.severity.toUpperCase()}</span>
+      <b>${esc(f.title)}</b>${status(f)}</div>
+      <div class="fr">Broken rule: ${esc(f.rule)}</div>
+      <div class="fm">found ${esc(f.first_seen)} · exploited ${f.count}× in the mirage${f.at_stake ? ` · ${short(f.at_stake)} would have been real` : ""}</div>
+      <div class="repro mono">${esc(f.repro)}</div></div>`).join("");
+  return `<div class="panel findings"><div class="panel-h"><h2>Vulnerabilities the attacker found for us</h2>
+    <span class="muted">${list.length} in production code · ${inc.decoys || 0} synthetic customers in the mirage</span></div>
+    ${items || `<div class="muted">Nothing yet. The mirage runs the bank's real code: every rule he breaks here is a real hole.</div>`}</div>`;
+}
+
 function metricsHtml(inc) {
   const d = inc.deception || {};
   const m = Math.floor((d.engaged_s || 0) / 60), sec = (d.engaged_s || 0) % 60;
@@ -241,13 +255,15 @@ function renderStage() {
     </div>
     ${inc.diverted ? tacticsHtml(inc) : ""}
     <div class="grid2">
-      <div class="panel"><div class="panel-h"><h2>Why this session was flagged</h2><span class="muted">threshold ${S.threshold}</span></div>
+      ${inc.diverted ? findingsHtml(inc) : `<div class="panel"><div class="panel-h"><h2>Why this session was flagged</h2><span class="muted">threshold ${S.threshold}</span></div>
         <div class="meter"><i style="width:${inc.score}%"></i><em style="left:${S.threshold}%"></em></div>
-        <div class="signals compact">${sigs}</div></div>
+        <div class="signals compact">${sigs}</div></div>`}
       <div class="panel flow"><div class="panel-h"><h2>Where the attacker tried to send the money</h2><span class="muted">${inc.destinations.length} mule accounts revealed</span></div>
         ${flowSvg(inc)}<div class="endpoints">${eps}</div></div>
     </div>
-    <div class="bottom">${devinPanel(inc)}
+    <div class="bottom ${inc.diverted ? "three" : ""}">${inc.diverted ? `<div class="panel"><div class="panel-h"><h2>Why he was flagged</h2><span class="muted">risk ${inc.score}</span></div>
+        <div class="signals mini">${inc.signals.map((g) => `<span title="${esc(g.detail)}"><i>+${g.weight}</i>${esc(g.title)}</span>`).join("")}</div></div>` : ""}
+      ${devinPanel(inc)}
       <div class="panel"><div class="panel-h"><h2>Morning decision</h2><a href="/api/incidents/${esc(inc.id)}/report" target="_blank">Incident report ↓</a></div>
         <div class="actions">
           <button class="ok" id="release" ${inc.diverted && !released && !fraud ? "" : "disabled"}><b>It was the customer: release</b><span>Post the ${inc.held.length} held transfers to the real ledger</span></button>

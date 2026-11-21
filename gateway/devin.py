@@ -32,6 +32,8 @@ class Devin:
 
 
 def build_prompt(incident: dict, repo: str) -> str:
+    found = "\n".join(f"- [{f['severity'].upper()}] {f['title']}. Broken rule: {f['rule']}. Exploited {f['count']}x. "
+                      f"First reproduction: {f['repro']}" for f in incident.get("findings", [])) or "- (none recorded)"
     log = "\n".join(f"{r['ts']}  {r['method']} {r['path']}  {r['body']}  -> {r['status']} {r['result']}"
                     for r in incident["log"])
     return f"""You are on the security team of Desert Bank. At {incident['diverted_at']} our Mirage deception layer
@@ -40,12 +42,16 @@ the bank, so no real money moved. Below is the exact request sequence the attack
 
 Repository: {repo}. The bank API is bank/app.py (FastAPI). Existing tests live in tests/ and run with `pytest -q`.
 
+Inside the shadow bank (which runs this exact bank code) the attacker broke these bank rules. Each one is a real
+vulnerability in production:
+{found}
+
 Task:
-1. Find how the attacker could move money to a brand-new beneficiary even though /v2/transfers requires a
-   step-up confirmation on a trusted device for new beneficiaries.
-2. Fix the root cause in bank/app.py without breaking legitimate clients that use /v2.
-3. Add tests/test_incident_{incident['id']}.py that replays this attack sequence with FastAPI's TestClient and asserts
-   that no money leaves the victim's account. It must fail on the current code and pass with your fix.
+1. Confirm each vulnerability against bank/app.py and find the root cause.
+2. Fix them in bank/app.py without breaking legitimate clients that use /v2.
+3. Add tests/test_incident_{incident['id']}.py that replays the attacker's exploits with FastAPI's TestClient and asserts
+   they no longer work (no money leaves accounts the session doesn't own, no new beneficiary without step-up, no
+   reading other customers' balances). The tests must fail on the current code and pass with your fix.
 4. Open a pull request titled "Mirage incident {incident['id']}: <root cause in a few words>" with a short root-cause
    write-up in the description. Keep the change small.
 

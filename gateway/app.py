@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import clock, risk
+from . import clock, findings, risk
 from .devin import Devin
 from .shadow import INTERNAL_KEY, make_shadow
 
@@ -49,6 +49,7 @@ class Store:
         self.incident_id: str | None = None
         self.accounts: list[dict] = []
         self.mules: dict[str, dict] = {}
+        self.findings: dict[str, dict] = {}
         self.protection = os.getenv("MIRAGE_PROTECTION", "on") == "on"
 
 
@@ -125,6 +126,14 @@ async def divert(session: dict):
             "currency": "AED", "balance": BAIT_BALANCE, "product": "Savings Plus"}
     snapshot["accounts"][bait["id"]] = bait
     session["bait_account"] = bait["id"]
+    session["owned"] = set(snapshot["accounts"])
+    real_accounts = (await internal(REAL, "GET", "/internal/accounts"))["accounts"]
+    for n, acc in enumerate(a for a in real_accounts if a["id"] not in session["owned"]):
+        owner = f"SYN-{n + 1}"
+        snapshot["customers"][owner] = {"id": owner, "name": f"Synthetic customer {n + 1}"}
+        snapshot["accounts"][acc["id"]] = {"id": acc["id"], "iban": f"AE{n + 4}90330000{n}48812{n}7710{n}", "owner": owner,
+                                           "currency": "AED", "balance": [286_400.0, 612_000.0, 94_250.0][n % 3]}
+    session["decoys"] = len(real_accounts) - 1
     await internal(SHADOW, "POST", "/internal/import", json=snapshot)
     session["diverted"], session["status"], session["diverted_at"] = True, "diverted", clock.label()
     session["kind"], session["first_diverted"] = "attacker", time.time()
@@ -213,6 +222,13 @@ async def proxy(request: Request):
                 tactic(session, "bait", f"AED {float(payload['amount']):,.0f} → {payload['to_name']}")
         if session["diverted"]:
             session["last_seen"] = time.time()
+            if path == "/v2/auth/step-up" and r.status_code == 200:
+                session["stepped_up"] = True
+            for key, amount in findings.check(session, request.method, path, payload, r.status_code,
+                                              await profile(session["customer_id"])):
+                f = findings.record(STORE.findings, session, key, amount, request.method, path, payload)
+                if f["count"] == 1:
+                    event("finding", f"Vulnerability found by the attacker: {f['title']}", session)
         if is_transfer and r.status_code == 200 and session.get("kind") == "attacker":
             learn_mule(session, payload)
         session["log"].append({"ts": clock.label(), "method": request.method, "path": path,
@@ -311,7 +327,7 @@ def register(request: Request, payload: dict, data: dict, prof: dict) -> dict:
                "signals": {}, "attempts": [], "step_up_failed": False, "diverted": False, "diverted_at": None,
                "status": "monitoring", "held": [], "log": [], "balances": {"real": 0, "attacker": 0}, "devin": None,
                "kind": None, "protected_at": None, "matched": None, "tactics": {}, "bait_account": None,
-               "first_diverted": None, "last_seen": None}
+               "first_diverted": None, "last_seen": None, "owned": set(), "stepped_up": False, "decoys": 0}
     STORE.sessions[data["token"]] = session
     return session
 
@@ -359,7 +375,7 @@ def incident_view(session: dict) -> dict:
     endpoints = list(dict.fromkeys(f"{e['method']} {e['path']}" for e in session["log"]))
     return {**{k: session[k] for k in ("id", "customer_id", "name", "device_id", "ip", "user_agent", "started", "score",
                                        "diverted", "diverted_at", "status", "balances", "devin", "kind",
-                                       "protected_at", "matched")},
+                                       "protected_at", "matched", "decoys")},
             "mule": STORE.mules.get(session["matched"]) if session["matched"] else None,
             "signals": list(session["signals"].values()), "held": session["held"], "tactics": session["tactics"],
             "deception": deception(session),
@@ -378,14 +394,18 @@ def snapshot() -> dict:
             "sessions": sorted(({"id": s["id"], "name": s["name"], "device_id": s["device_id"], "score": s["score"],
                                  "status": s["status"]} for s in unique_sessions()), key=lambda s: -s["score"]),
             "events": list(STORE.events)[-80:], "accounts": STORE.accounts, "mules": list(STORE.mules.values()),
-            "incidents": [incident_view(s) for s in unique_sessions() if s["kind"]], "incident": incident_view(incident) if incident else None}
+            "incidents": [incident_view(s) for s in unique_sessions() if s["kind"]],
+            "findings": list(STORE.findings.values()), "incident": incident_view(incident) if incident else None}
 
 
 async def start_devin(session: dict):
     session["devin"] = {"status": "starting", "url": None, "prs": [], "started_at": clock.label()}
     notify()
     try:
-        created = await DEVIN.start({**incident_view(session), "log": session["log"]})
+        found = [f for f in STORE.findings.values() if f["incident"] == session["id"]]
+        created = await DEVIN.start({**incident_view(session), "log": session["log"], "findings": found})
+        for f in found:
+            f["status"] = "devin"
         session["devin"].update(status=created.get("status", "new"), url=created.get("url"), id=created["session_id"])
         event("devin", "Devin started investigating the attack", session, url=created.get("url"))
         while True:
@@ -396,6 +416,11 @@ async def start_devin(session: dict):
             session["devin"].update(status=info.get("status"), prs=prs, detail=info.get("status_detail"))
             if changed:
                 event("devin", f"Devin: {info.get('status')}" + (f" · PR {prs[-1]}" if prs else ""), session)
+            if prs:
+                for f in STORE.findings.values():
+                    if f["incident"] == session["id"]:
+                        f.update(status="pr", pr=prs[-1])
+                notify()
             if prs or info.get("status") in ("exit", "error", "suspended"):
                 return
     except Exception as e:

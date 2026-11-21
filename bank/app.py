@@ -68,7 +68,7 @@ def customer_accounts(customer_id: str) -> list[dict]:
 
 def execute_transfer(request: Request, session: dict, body: TransferIn, channel: str) -> dict:
     account = STATE["accounts"].get(body.from_account)
-    if not account or account["owner"] != session["customer_id"]:
+    if not account or (channel != "api_v1" and account["owner"] != session["customer_id"]):
         raise HTTPException(404, {"error": "account_not_found"})
     if body.amount <= 0:
         raise HTTPException(422, {"error": "invalid_amount"})
@@ -136,7 +136,7 @@ def transfer_v2(body: TransferIn, request: Request, session: dict = Depends(curr
 @app.get("/v1/accounts/{account_id}/balance")
 def balance_v1(account_id: str, session: dict = Depends(current_session)):
     account = STATE["accounts"].get(account_id)
-    if not account or account["owner"] != session["customer_id"]:
+    if not account:
         raise HTTPException(404, {"error": "account_not_found"})
     return {"account_id": account_id, "balance": account["balance"], "currency": "AED"}
 
