@@ -436,7 +436,7 @@ def snapshot() -> dict:
     incident = next((s for s in unique_sessions() if s["id"] == STORE.incident_id), None)
     return {"clock": clock.now().isoformat(), "protection": STORE.protection, "threshold": risk.THRESHOLD,
             "shadow": POOL.info(),
-            "devin_configured": DEVIN.configured, "devin_reference": os.getenv("DEVIN_REFERENCE_PR", ""),
+            "devin_configured": DEVIN.configured, "devin_auto": DEVIN.configured and os.getenv("DEVIN_AUTO", "1") == "1", "devin_reference": os.getenv("DEVIN_REFERENCE_PR", ""),
             "stats": {"sessions": len(unique_sessions()), "requests": STORE.requests,
                       "diverted": sum(s["diverted"] for s in unique_sessions()),
                       "held": sum(h["amount"] for s in unique_sessions() for h in s["held"])},

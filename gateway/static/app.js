@@ -85,11 +85,16 @@ function devinPanel(inc) {
   const dv = inc.devin;
   const prs = dv?.prs || [];
   const st = dv?.status;
+  const found = (S.findings || []).filter((f) => f.incident === inc.id);
+  const verifying = found.some((f) => (f.verify || {}).state === "running");
+  const verified = found.filter((f) => (f.verify || {}).state === "done");
+  const fixed = found.filter((f) => f.status === "verified").length;
   const steps = [
-    [`${(S.findings || []).filter((f) => f.incident === inc.id).length || "No"} findings + attack log captured`, !!inc.log.length, false],
-    ["Devin session started", !!dv?.url, dv && !dv.url && st !== "error"],
-    ["Root cause & fix in progress", prs.length > 0, !!dv?.url && !prs.length && !["exit", "error"].includes(st)],
-    ["Pull request with regression test", prs.length > 0, false],
+    [`Attacker found ${found.length} vulnerabilit${found.length === 1 ? "y" : "ies"} in the mirage`, found.length > 0, false],
+    ["Findings sent to Devin", !!dv?.url, dv && !dv.url && st !== "error"],
+    ["Devin opened a fix PR", prs.length > 0, !!dv?.url && !prs.length && !["exit", "error"].includes(st)],
+    [verified.length ? `His exploits replayed on the PR: ${fixed}/${found.length} blocked` : "His exploits replayed against the PR",
+      verified.length > 0 && !verifying, verifying],
   ];
   const body = steps.map(([t, done, live]) => `<div class="step ${done ? "done" : live ? "live" : ""}"><span class="b"></span>${t}</div>`).join("");
   const links = (dv?.url ? `<div class="muted" style="margin-top:10px">Session: <a href="${esc(dv.url)}" target="_blank">${esc(dv.url)}</a></div>` : "") +
@@ -98,7 +103,7 @@ function devinPanel(inc) {
       <button id="verify-btn" class="ghost" style="margin-left:6px">Replay exploits against it</button></div>` : "") +
     (st === "error" ? `<div class="muted" style="color:var(--red);margin-top:8px">${esc(dv.detail || "error")}</div>` : "");
   const btn = !dv ? `<button id="devin-btn" style="margin-top:12px" ${S.devin_configured ? "" : "disabled title='Set DEVIN_API_KEY and DEVIN_ORG_ID'"}>Send findings to Devin</button>` : "";
-  return `<div class="panel"><div class="panel-h"><h2>Devin · find and fix the hole</h2><span class="muted">${esc(st || "")}</span></div>
+  return `<div class="panel"><div class="panel-h"><h2>Devin · fix what he found</h2><span class="muted">${esc(st || "")}</span></div>
     <div class="steps">${body}</div>${links}${btn}</div>`;
 }
 
@@ -245,41 +250,57 @@ function renderStage() {
     released ? "Held transfers posted to the real account" :
     `The attacker was moved into a fake copy of the bank. He thinks he is stealing; ${first}'s real money hasn't moved.`;
   const drained = off && inc.balances.real < 1;
-  const realNote = released ? "held transfers posted after the customer confirmed" : off ? (drained ? "drained: the money really left the bank" : "real money is leaving the bank") : "in the real bank database · only the AED 1 probe really left";
-  const fakeNote = inc.diverted ? `fake balances in his private shadow bank · ${inc.held.length} transfers "approved", only the AED 1 probe was real` : "no deception: he sees the real balance";
+  const realNote = released ? "held transfers posted after the customer confirmed" : off ? (drained ? "drained: the money really left the bank" : "real money is leaving the bank") : "real bank database · only his AED 1 test transfer really left";
+  const fakeNote = inc.diverted ? `his private shadow bank · ${inc.held.length} transfers "approved" · all accounts he touched` : "no deception: he sees the real balance";
   const sigs = inc.signals.map((s) => `<div class="sig" title="${esc(s.detail)}"><span class="w">+${s.weight}</span><div><b>${esc(s.title)}</b><div>${esc(s.detail)}</div></div></div>`).join("");
   const eps = inc.endpoints.map((e) => `<span class="${e.includes("/v1/transfers") ? "hot" : ""}">${esc(e)}</span>`).join("");
 
-  stage.innerHTML = chipsHtml(inc) + `
-    <div class="banner ${off ? "off" : ""} ${released ? "released" : ""}">
-      <div><div class="state">${state}</div><div class="title">${title}</div>
-        <div class="meta"><span>Session <b class="mono">${esc(inc.id)}</b></span><span>${esc(inc.name)}</span>
-        <span>device <b class="mono">${esc(inc.device_id)}</b></span><span>IP <b class="mono">${esc(inc.ip)}</b></span>
-        <span>login ${esc(inc.started)}</span><span>risk <b>${inc.score}</b></span>
-        ${inc.diverted_at ? `<span>diverted <b>${esc(inc.diverted_at)}</b></span>` : ""}</div></div>
-      ${inc.diverted ? metricsHtml(inc) : `<div class="gauge" style="--v:${inc.score};--c:var(--red)"><span>${inc.score}</span><small>RISK</small></div>`}
-    </div>
-    <div class="balances">
-      <div class="bal real ${drained || (off && sent) ? "drained" : ""}"><div class="lbl">${esc(first)}'s real balance</div><div class="amt" id="amt-real"></div><div class="note">${realNote}</div></div>
-      <div class="bal fake"><div class="lbl">What the attacker sees on his screen (all accounts)</div><div class="amt" id="amt-fake"></div><div class="note">${fakeNote}</div></div>
-    </div>
-    ${inc.diverted ? tacticsHtml(inc) : ""}
-    <div class="grid2">
-      ${inc.diverted ? findingsHtml(inc) : `<div class="panel"><div class="panel-h"><h2>Why this session was flagged</h2><span class="muted">threshold ${S.threshold}</span></div>
-        <div class="meter"><i style="width:${inc.score}%"></i><em style="left:${S.threshold}%"></em></div>
-        <div class="signals compact">${sigs}</div></div>`}
-      <div class="panel flow"><div class="panel-h"><h2>Where the attacker tried to send the money</h2><span class="muted">${inc.destinations.length} mule accounts revealed</span></div>
-        ${flowSvg(inc)}<div class="endpoints">${eps}</div></div>
-    </div>
-    <div class="bottom ${inc.diverted ? "three" : ""}">${inc.diverted ? `<div class="panel"><div class="panel-h"><h2>Why he was flagged</h2><span class="muted">risk ${inc.score}</span></div>
-        <div class="signals mini">${inc.signals.map((g) => `<span title="${esc(g.detail)}"><i>+${g.weight}</i>${esc(g.title)}</span>`).join("")}</div></div>` : ""}
-      ${devinPanel(inc)}
-      <div class="panel"><div class="panel-h"><h2>Morning decision</h2><a href="/api/incidents/${esc(inc.id)}/report" target="_blank">Incident report ↓</a></div>
+  const decision = `<div class="panel"><div class="panel-h"><h2>Morning decision</h2><a href="/api/incidents/${esc(inc.id)}/report" target="_blank">Incident report ↓</a></div>
         <div class="actions">
           <button class="ok" id="release" ${inc.diverted && !released && !fraud ? "" : "disabled"}><b>It was the customer: release</b><span>Post the ${inc.held.length} held transfers to the real ledger</span></button>
           <button class="bad" id="fraud" ${inc.diverted && !released && !fraud ? "" : "disabled"}><b>Confirm fraud: void & report</b><span>Void held transfers, report ${inc.destinations.length} destination accounts</span></button>
-        </div></div>
+        </div></div>`;
+  const balances = `<div class="balances">
+      <div class="bal real ${drained || (off && sent) ? "drained" : ""}"><div class="lbl">${esc(first)}'s real balance</div><div class="amt" id="amt-real"></div><div class="note">${realNote}</div></div>
+      <div class="bal fake"><div class="lbl">What the attacker sees on his screen</div><div class="amt" id="amt-fake"></div><div class="note">${fakeNote}</div></div>
     </div>`;
+  const meta = `<div class="meta"><span>Session <b class="mono">${esc(inc.id)}</b></span><span>${esc(inc.name)}</span>
+        <span>device <b class="mono">${esc(inc.device_id)}</b></span><span>IP <b class="mono">${esc(inc.ip)}</b></span>
+        <span>risk <b>${inc.score}</b></span>${inc.diverted_at ? `<span>diverted <b>${esc(inc.diverted_at)}</b></span>` : ""}</div>`;
+  if (inc.diverted) {
+    stage.innerHTML = chipsHtml(inc) + `
+    <div class="banner compact ${released ? "released" : ""}">
+      <div><div class="state">${state}</div><div class="title">He thinks he is robbing the bank. He is inside a private copy of it, finding our bugs for us.</div>${meta}</div>
+      ${metricsHtml(inc)}
+    </div>
+    ${balances}
+    ${tacticsHtml(inc)}
+    <div class="main2">
+      ${findingsHtml(inc)}
+      <div class="col">${devinPanel(inc)}
+        <div class="panel flow"><div class="panel-h"><h2>Where he tried to send the money</h2><span class="muted">${inc.destinations.length} mule accounts</span></div>${flowSvg(inc)}</div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><div class="panel-h"><h2>Why he was flagged</h2><span class="muted">risk ${inc.score} · threshold ${S.threshold}</span></div>
+        <div class="signals compact">${sigs}</div></div>
+      ${decision}
+    </div>`;
+  } else {
+    stage.innerHTML = chipsHtml(inc) + `
+    <div class="banner off">
+      <div><div class="state">${state}</div><div class="title">${title}</div>${meta}</div>
+      <div class="gauge" style="--v:${inc.score};--c:var(--red)"><span>${inc.score}</span><small>RISK</small></div>
+    </div>
+    ${balances}
+    <div class="grid2">
+      <div class="panel"><div class="panel-h"><h2>Mirage saw it coming</h2><span class="muted">threshold ${S.threshold}</span></div>
+        <div class="meter"><i style="width:${inc.score}%"></i><em style="left:${S.threshold}%"></em></div>
+        <div class="signals compact">${sigs}</div></div>
+      <div class="panel flow"><div class="panel-h"><h2>Where the real money went</h2><span class="muted">${inc.destinations.length} accounts</span></div>
+        ${flowSvg(inc)}<div class="endpoints">${eps}</div></div>
+    </div>`;
+  }
   if (shown.realStart == null) shown.realStart = inc.balances.real;
   tween("real", $("#amt-real"), inc.balances.real);
   tween("attacker", $("#amt-fake"), inc.balances.attacker);
