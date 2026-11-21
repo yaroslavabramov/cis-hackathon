@@ -9,6 +9,8 @@ if [ -f .env ]; then
   done < .env
 fi
 PY=.venv/bin/python
+# Fresh internal key per run, shared only by the gateway and the banks it starts
+export BANK_INTERNAL_KEY="${BANK_INTERNAL_KEY:-$($PY -c 'import secrets; print(secrets.token_urlsafe(24))')}"
 pids=()
 trap 'kill "${pids[@]}" 2>/dev/null' EXIT INT TERM
 BANK_MODE=real $PY -m uvicorn bank.app:app --port 8001 --log-level warning & pids+=($!)

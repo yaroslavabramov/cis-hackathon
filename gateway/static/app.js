@@ -172,11 +172,11 @@ function tacticsHtml(inc) {
   const probe = d.probe_to ? `${esc(d.probe_to.name)} · ${esc(d.probe_to.iban.slice(0, 8))}…` : "";
   return `<div class="tactics">
     ${card("probe", "Probe pass-through", "Tiny test transfers really go out, so the attacker's check succeeds.",
-      `AED ${Number(d.real_lost || 0).toLocaleString()} really sent to <b>${probe}</b>: the attacker's own account.`)}
-    ${card("sticky", "Sticky mirage", "Re-logins from the same device or IP land in the same fake bank.",
+      `AED ${Number(d.real_lost || 0).toLocaleString()} really sent to <b>${probe}</b>, his own account. Bank reimbursed the customer.`)}
+    ${card("sticky", "Sticky mirage", "His device, or any untrusted device on this account, returns to the same fake bank.",
       `${d.relogins} re-login${d.relogins === 1 ? "" : "s"} from a fresh session: still inside the mirage, balances consistent.`)}
-    ${card("bait", "Bait account", "A fake savings account appears once the real one is 'empty'.",
-      `Fake "Savings Plus" ${short(1200000)} chased into ${(t.bait || []).length} transfers to new mules.`)}
+    ${card("bait", "Bait account", "A fake matured fixed deposit appears once the real account is 'empty'.",
+      `Fake fixed deposit of ${short(1200000)} chased into ${(t.bait || []).length} transfers to new mules.`)}
     ${card("friction", "Compliance friction", "Big wires ask for the beneficiary's phone and purpose.",
       `${d.phones} mule phone number${d.phones === 1 ? "" : "s"} handed over by the attacker.`)}
   </div>`;
@@ -207,7 +207,7 @@ function metricsHtml(inc) {
   const m = Math.floor((d.engaged_s || 0) / 60), sec = (d.engaged_s || 0) % 60;
   const cell = (v, l, cls = "") => `<div class="metric ${cls}"><b>${v}</b><span>${l}</span></div>`;
   return `<div class="metrics">${cell(`${m}:${String(sec).padStart(2, "0")}`, "in the mirage")}
-    ${cell(short(d.fake_stolen), "fake money stolen", "fake")}${cell(short(d.real_lost), "real money lost", "real")}
+    ${cell(short(d.fake_stolen), "fake money stolen", "fake")}${cell(short(0), "customer loss", "real")}
     ${cell(d.mules || 0, "mule accounts")}${cell(d.phones || 0, "phone numbers")}</div>`;
 }
 
@@ -243,8 +243,8 @@ function renderStage() {
     released ? "Held transfers posted to the real account" :
     `The attacker was moved into a fake copy of the bank. He thinks he is stealing; ${first}'s real money hasn't moved.`;
   const drained = off && inc.balances.real < 1;
-  const realNote = released ? "held transfers posted after the customer confirmed" : off ? (drained ? "drained: the money really left the bank" : "real money is leaving the bank") : "in the real bank database · only the AED 1 test transfer left, on purpose";
-  const fakeNote = inc.diverted ? `fake balances in the shadow copy · ${inc.held.length} transfers "approved", only the AED 1 probe was real` : "no deception: he sees the real balance";
+  const realNote = released ? "held transfers posted after the customer confirmed" : off ? (drained ? "drained: the money really left the bank" : "real money is leaving the bank") : "in the real bank database · the AED 1 probe was reimbursed by the bank";
+  const fakeNote = inc.diverted ? `fake balances in his private shadow bank · ${inc.held.length} transfers "approved", only the AED 1 probe was real` : "no deception: he sees the real balance";
   const sigs = inc.signals.map((s) => `<div class="sig" title="${esc(s.detail)}"><span class="w">+${s.weight}</span><div><b>${esc(s.title)}</b><div>${esc(s.detail)}</div></div></div>`).join("");
   const eps = inc.endpoints.map((e) => `<span class="${e.includes("/v1/transfers") ? "hot" : ""}">${esc(e)}</span>`).join("");
 

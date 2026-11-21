@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import clock, findings, risk, verify
 from .devin import Devin
-from .shadow import INTERNAL_KEY, make_shadow
+from .shadow import INTERNAL_KEY, ShadowPool
 
 REAL_URL = os.getenv("BANK_URL", "http://127.0.0.1:8001")
 PROBE_LIMIT = float(os.getenv("MIRAGE_PROBE_LIMIT", "100"))
@@ -32,7 +32,7 @@ class Target:
 
 
 REAL = Target(REAL_URL)
-SHADOW = make_shadow()
+POOL = ShadowPool()
 DEVIN = Devin()
 HTTP = httpx.AsyncClient(timeout=30)
 
@@ -60,7 +60,7 @@ TASKS: set[asyncio.Task] = set()
 
 @asynccontextmanager
 async def lifespan(_):
-    spawn(SHADOW.start())
+    spawn(POOL.start())
     spawn(refresh_accounts())
     yield
     await HTTP.aclose()
@@ -115,26 +115,28 @@ async def refresh_balances(session: dict):
     p = await internal(REAL, "GET", f"/internal/profile/{session['customer_id']}")
     session["balances"]["real"] = p["balance"]
     if session["diverted"]:
-        p = await internal(SHADOW, "GET", f"/internal/profile/{session['customer_id']}")
+        p = await internal(session["shadow"], "GET", f"/internal/profile/{session['customer_id']}")
     session["balances"]["attacker"] = p["balance"]
 
 
 async def divert(session: dict):
     snapshot = await internal(REAL, "GET", "/internal/export", params={"customer_id": session["customer_id"]})
     main = next(iter(snapshot["accounts"].values()))
-    bait = {"id": f"{main['id']}-SV", "iban": main["iban"][:-6] + "770412", "owner": session["customer_id"],
-            "currency": "AED", "balance": BAIT_BALANCE, "product": "Savings Plus"}
+    bait = {"id": f"ACC-{int(main['id'].split('-')[1]) + 6000}", "iban": main["iban"][:-6] + "770412",
+            "owner": session["customer_id"], "currency": "AED", "balance": BAIT_BALANCE,
+            "product": "Fixed Deposit (matured 01:55)"}
     snapshot["accounts"][bait["id"]] = bait
     session["bait_account"] = bait["id"]
     session["owned"] = set(snapshot["accounts"])
     real_accounts = (await internal(REAL, "GET", "/internal/accounts"))["accounts"]
     for n, acc in enumerate(a for a in real_accounts if a["id"] not in session["owned"]):
-        owner = f"SYN-{n + 1}"
-        snapshot["customers"][owner] = {"id": owner, "name": f"Synthetic customer {n + 1}"}
-        snapshot["accounts"][acc["id"]] = {"id": acc["id"], "iban": f"AE{n + 4}90330000{n}48812{n}7710{n}", "owner": owner,
-                                           "currency": "AED", "balance": [286_400.0, 612_000.0, 94_250.0][n % 3]}
+        snapshot["customers"].setdefault(acc["owner"], {"id": acc["owner"], "name": f"Synthetic customer {n + 1}"})
+        snapshot["accounts"][acc["id"]] = {"id": acc["id"], "iban": f"AE{n + 4}90330000{n}48812{n}7710{n}",
+                                           "owner": acc["owner"], "currency": "AED",
+                                           "balance": [286_400.0, 612_000.0, 94_250.0][n % 3]}
     session["decoys"] = len(real_accounts) - 1
-    await internal(SHADOW, "POST", "/internal/import", json=snapshot)
+    session["shadow"] = await POOL.acquire()
+    await internal(session["shadow"], "POST", "/internal/import", json=snapshot)
     session["diverted"], session["status"], session["diverted_at"] = True, "diverted", clock.label()
     session["kind"], session["first_diverted"] = "attacker", time.time()
     STORE.incident_id = session["id"]
@@ -190,7 +192,7 @@ async def proxy(request: Request):
                 event("alert", f"Risk {session['score']}: protection is OFF, traffic still hits the real bank", session)
 
     if path == "/v2/auth/login":
-        actor = sticky_actor(payload.get("device_id"), client_ip(request))
+        actor = await sticky_actor(payload.get("customer_id", ""), payload.get("device_id"), client_ip(request))
         if actor and STORE.protection:
             return await sticky_login(request, body, payload, actor)
     if session and session["diverted"] and is_transfer:
@@ -202,8 +204,8 @@ async def proxy(request: Request):
         if payload.get("beneficiary_phone"):
             tactic(session, "friction", f"{payload['to_name']}: {payload['beneficiary_phone']}")
 
-    target = SHADOW if session and session["diverted"] else REAL
-    where = "shadow" if target is SHADOW else "real"
+    target = session["shadow"] if session and session["diverted"] else REAL
+    where = "real" if target is REAL else "shadow"
     headers = {k: v for k, v in request.headers.items() if k in ("authorization", "content-type", "user-agent")}
     r = await HTTP.request(request.method, f"{target.base_url}{path}", params=request.query_params, content=body,
                            headers={**headers, **internal_headers(target)})
@@ -234,12 +236,12 @@ async def proxy(request: Request):
         session["log"].append({"ts": clock.label(), "method": request.method, "path": path,
                                "body": json.dumps(redact(payload)) if payload else "", "status": r.status_code,
                                "result": describe(path, r.status_code, data), "target": where})
-        if is_transfer or path == "/v2/auth/login":
+        if (is_transfer or path == "/v2/auth/login") and session["kind"]:
             await refresh_balances(session)
-    if is_transfer:
-        await refresh_accounts()
         event("request", f"{request.method} {path}", session, status=r.status_code, target=where,
               score=session["score"], result=describe(path, r.status_code, data))
+    if is_transfer:
+        spawn(refresh_accounts())
     return Response(r.content, r.status_code, media_type=r.headers.get("content-type"))
 
 
@@ -252,13 +254,35 @@ def tactic(session: dict, key: str, item: str):
     notify()
 
 
-def sticky_actor(device_id: str | None, ip: str) -> dict | None:
-    return next((s for s in unique_sessions() if s["diverted"] and (s["device_id"] == device_id or s["ip"] == ip)), None)
+async def sticky_actor(customer_id: str, device_id: str | None, ip: str) -> dict | None:
+    """Same attacker device always returns to its mirage. IP or account matches only count for untrusted devices,
+    so a real customer on their own phone (even behind the same NAT) never lands in the mirage."""
+    active = [s for s in unique_sessions() if s["diverted"]]
+    if not active:
+        return None
+    try:
+        trusted = device_id in (await profile(customer_id))["known_devices"]
+    except httpx.HTTPError:
+        trusted = False
+    for s in active:
+        if s["device_id"] == device_id or (not trusted and (s["ip"] == ip or s["customer_id"] == customer_id)):
+            return s
+    return None
 
 
 async def sticky_login(request: Request, body: bytes, payload: dict, actor: dict) -> Response:
-    r = await HTTP.post(f"{SHADOW.base_url}/v2/auth/login", content=body,
-                        headers={"content-type": "application/json", **internal_headers(SHADOW)})
+    shadow, cid = actor["shadow"], payload.get("customer_id", "")
+    if cid != actor["customer_id"] and cid not in actor["cloned"]:
+        try:
+            snap = await internal(REAL, "GET", "/internal/export", params={"customer_id": cid})
+            actor["owned"] |= set(snap["accounts"])
+            snap.update(accounts={}, transactions=[])
+            await internal(shadow, "POST", "/internal/import", json=snap)
+            actor["cloned"].add(cid)
+        except httpx.HTTPError:
+            pass
+    r = await HTTP.post(f"{shadow.base_url}/v2/auth/login", content=body,
+                        headers={"content-type": "application/json", **internal_headers(shadow)})
     if r.status_code == 200:
         STORE.sessions[r.json()["token"]] = actor
         tactic(actor, "sticky", f"re-login from {payload.get('device_id')} / {client_ip(request)}")
@@ -283,6 +307,9 @@ async def pass_probe(session: dict, payload: dict):
     await internal(REAL, "POST", "/internal/post-transfer", json={
         "from_account": payload["from_account"], "to_iban": payload["to_iban"], "to_name": payload["to_name"],
         "country": payload.get("country", "AE"), "amount": float(payload["amount"]), "reference": payload.get("reference", "")})
+    await internal(REAL, "POST", "/internal/credit", json={
+        "account_id": payload["from_account"], "amount": float(payload["amount"]),
+        "reference": "Mirage deception budget: probe reimbursed"})
     tactic(session, "probe", f"AED {float(payload['amount']):,.0f} → {payload['to_name']} really sent")
     event("probe", f"Test transfer of AED {float(payload['amount']):,.0f} passed to the real bank so the attacker's check succeeds", session)
 
@@ -327,7 +354,8 @@ def register(request: Request, payload: dict, data: dict, prof: dict) -> dict:
                "signals": {}, "attempts": [], "step_up_failed": False, "diverted": False, "diverted_at": None,
                "status": "monitoring", "held": [], "log": [], "balances": {"real": 0, "attacker": 0}, "devin": None,
                "kind": None, "protected_at": None, "matched": None, "tactics": {}, "bait_account": None,
-               "first_diverted": None, "last_seen": None, "owned": set(), "stepped_up": False, "decoys": 0}
+               "first_diverted": None, "last_seen": None, "owned": set(), "stepped_up": False, "decoys": 0,
+               "shadow": None, "cloned": set()}
     STORE.sessions[data["token"]] = session
     return session
 
@@ -386,7 +414,7 @@ def incident_view(session: dict) -> dict:
 def snapshot() -> dict:
     incident = next((s for s in unique_sessions() if s["id"] == STORE.incident_id), None)
     return {"clock": clock.now().isoformat(), "protection": STORE.protection, "threshold": risk.THRESHOLD,
-            "shadow": {"kind": SHADOW.kind, "label": SHADOW.label, "status": SHADOW.status, "detail": SHADOW.detail},
+            "shadow": POOL.info(),
             "devin_configured": DEVIN.configured, "devin_reference": os.getenv("DEVIN_REFERENCE_PR", ""),
             "stats": {"sessions": len(unique_sessions()), "requests": STORE.requests,
                       "diverted": sum(s["diverted"] for s in unique_sessions()),
@@ -514,12 +542,13 @@ async def api_reset():
         if task.get_coro().__name__ in ("start_devin", "devin_when_quiet", "run_verify"):
             task.cancel()
     protection = STORE.protection
+    for s in unique_sessions():
+        if s["shadow"]:
+            spawn(POOL.release(s["shadow"]))
     STORE.reset()
     STORE.protection = protection
     clock.reset()
     await internal(REAL, "POST", "/internal/reset")
-    if SHADOW.status == "ready":
-        await internal(SHADOW, "POST", "/internal/reset")
     await refresh_accounts()
     event("system", "Demo reset")
     return {"ok": True}
