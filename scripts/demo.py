@@ -55,22 +55,31 @@ def main():
     wait()
 
     title("3 · DEVIN fixes what he found, Mirage replays his exploits")
-    started, verify_sent = time.time(), False
-    while time.time() - started < 240:
+    s = snap()
+    dv, sid = s["incident"]["devin"] or {}, s["incident"]["id"]
+    if dv.get("url"):
+        print(f"{C}Devin is fixing it live: {dv['url']}{X}")
+    print(f"{D}replaying his exploits against Devin's PR for this same attack (made earlier today)...{X}")
+    API.post(f"/api/incidents/{sid}/verify", json={})
+    shown_live, started, printed = False, time.time(), set()
+    while time.time() - started < float(os.getenv("DEMO_DEVIN_WAIT", "75")):
         s = snap()
         dv, found = s["incident"]["devin"] or {}, s["findings"]
         states = [(f.get("verify") or {}).get("state") for f in found]
-        if found and all(st == "done" for st in states):
+        if found and all(st == "done" for st in states) and found[0].get("pr") not in printed:
+            printed.add(found[0].get("pr"))
             fixed = sum(f["status"] == "verified" for f in found)
-            print(f"\n{G}{BOLD}{fixed}/{len(found)} of his exploits blocked by the fix ({found[0]['verify']['where']}).{X}")
-            break
-        if not s["devin_auto"] or (not dv and time.time() - started > 20) or time.time() - started > 150:
-            if not verify_sent:
-                print(f"{D}replaying his exploits against an earlier Devin PR for the same attack...{X}")
-                API.post(f"/api/incidents/{s['incident']['id']}/verify", json={})
-                verify_sent = True
-        print(f"{D}  devin: {dv.get('status', 'waiting')} · PR: {(dv.get('prs') or ['-'])[-1]} · replay: {states}{X}", flush=True)
-        time.sleep(5)
+            print(f"{G}{BOLD}{fixed}/{len(found)} of his exploits blocked by the fix · main → 200, PR → 403/404 "
+                  f"({found[0]['verify']['where']}){X}")
+            if not s["devin_auto"] or shown_live:
+                break
+        if dv.get("prs") and not shown_live:
+            print(f"{C}{BOLD}Live Devin PR just landed: {dv['prs'][-1]} · replaying his exploits against it...{X}")
+            shown_live = True
+        time.sleep(3)
+    else:
+        if (s["incident"]["devin"] or {}).get("url") and not shown_live:
+            print(f"{D}Devin is still working live: {s['incident']['devin']['url']}{X}")
     title("Every attacker becomes our pentester.")
 
 
