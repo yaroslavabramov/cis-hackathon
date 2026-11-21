@@ -152,6 +152,10 @@ def run():
         if (s["incident"]["devin"] or {}).get("url") and not shown_live:
             print(f"{D}Devin is still working live: {s['incident']['devin']['url']}{X}")
     title("Every attacker becomes our pentester.")
+    API.post("/api/stage", json={"hint": "press Reset in the console to run the demo again"})
+    while True:
+        restart_if_reset()
+        time.sleep(0.3)
 
 
 if __name__ == "__main__":
