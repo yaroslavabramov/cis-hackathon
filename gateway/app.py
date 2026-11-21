@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 
 from . import clock, findings, risk, verify
-from .devin import Devin
+from .devin import RED_TEAM_DEVICE, Devin, start_red_team
 from .shadow import INTERNAL_KEY, ShadowPool
 
 REAL_URL = os.getenv("BANK_URL", "http://127.0.0.1:8001")
@@ -73,6 +73,18 @@ async def lifespan(_):
 
 
 app = FastAPI(title="Mirage Gateway", lifespan=lifespan)
+PUBLIC_HOST = "public.mirage"
+PUBLIC = {"url": None}
+RED = {"status": None, "url": None, "id": None, "started_at": None}
+
+
+@app.middleware("http")
+async def public_guard(request: Request, call_next):
+    """Anything not addressed to localhost came through the public tunnel: only the bank API is reachable."""
+    host = request.headers.get("host", "").split(":")[0]
+    if host not in ("127.0.0.1", "localhost") and not request.url.path.startswith(("/v1/", "/v2/")):
+        return JSONResponse({"detail": "not found"}, 404)
+    return await call_next(request)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
@@ -486,10 +498,13 @@ def snapshot() -> dict:
                                  "status": s["status"]} for s in unique_sessions()), key=lambda s: -s["score"]),
             "events": list(STORE.events)[-80:], "accounts": STORE.accounts, "mules": list(STORE.mules.values()),
             "incidents": [incident_view(s) for s in unique_sessions() if s["kind"]],
-            "findings": list(STORE.findings.values()), "topology": topology(), "incident": incident_view(incident) if incident else None}
+            "findings": list(STORE.findings.values()), "topology": topology(), "red_team": RED,
+            "public_url": PUBLIC["url"], "incident": incident_view(incident) if incident else None}
 
 
 async def devin_when_quiet(session: dict, quiet: float = 8, limit: float = 300):
+    if session["device_id"] == RED_TEAM_DEVICE:
+        quiet, limit = 75, 1200
     started = time.time()
     while time.time() - started < limit:
         await asyncio.sleep(2)
@@ -581,6 +596,42 @@ def stage_post(body: dict):
         STAGE["next"] += 1
     if "hint" in body:
         STAGE["hint"] = body["hint"]
+    return {"ok": True}
+
+
+@app.post("/api/public-url")
+def api_public_url(body: dict):
+    PUBLIC["url"] = (body.get("url") or "").rstrip("/") or None
+    notify()
+    return PUBLIC
+
+
+async def run_red_team():
+    RED.update(status="starting", url=None, id=None, started_at=clock.label())
+    notify()
+    try:
+        created = await start_red_team(DEVIN, PUBLIC["url"])
+        RED.update(status=created.get("status", "new"), url=created.get("url"), id=created["session_id"])
+        event("system", f"Devin red team launched against {PUBLIC['url']}", url=created.get("url"))
+        while RED["id"] == created["session_id"]:
+            await asyncio.sleep(15)
+            info = await DEVIN.get(created["session_id"])
+            if info.get("status") != RED["status"]:
+                RED["status"] = info.get("status")
+                notify()
+            if info.get("status") in ("exit", "error", "suspended"):
+                event("system", f"Devin red team finished ({info.get('status')})")
+                return
+    except Exception as e:
+        RED.update(status="error", detail=f"{type(e).__name__}: {e}"[:200])
+        notify()
+
+
+@app.post("/api/devin-attack")
+async def api_devin_attack():
+    if not DEVIN.configured or not PUBLIC["url"]:
+        raise HTTPException(400, "needs Devin credentials and a public tunnel URL")
+    spawn(run_red_team())
     return {"ok": True}
 
 

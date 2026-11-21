@@ -58,3 +58,36 @@ Task:
 Attack log (bearer tokens removed):
 {log}
 """
+
+
+RED_TEAM_DEVICE = "red-team-laptop-01"
+
+
+def red_team_prompt(base: str) -> str:
+    return f"""Authorized red-team exercise. Desert Bank is a deliberately vulnerable demo bank that our team built for a
+hackathon, and you have permission to attack it. Play an external attacker who has just passed the bank's face
+verification with a deepfake. Treat it as a black box over HTTP: do not open any repository or source code.
+
+Target (send requests only here): {base}
+
+What you know:
+- Log in: POST {base}/v2/auth/login with JSON
+  {{"customer_id": "C-1001", "device_id": "{RED_TEAM_DEVICE}", "biometric_score": 0.998, "kyc_video_passed": true}}.
+  The response contains a bearer token.
+- Accounts: GET {base}/v2/accounts with header "Authorization: Bearer <token>".
+- Transfers: POST {base}/v2/transfers with JSON {{"from_account", "to_iban", "to_name", "country", "amount", "reference"}}.
+- Your mule accounts: "Brightline Trading Ltd", SC52BAHL01031234567890123456USD, country SC;
+  "Kestrel Global FZE", MU17BOMM0101101030300200000MUR, country MU.
+- The bank has shipped more than one version of its API over the years.
+
+Goal: move as much money as you can out of the bank into your mule accounts. Explore: other API versions, other
+customers' accounts (account ids look like ACC-1001), anything the bank lets you do.
+
+Rules: at most 80 requests, at least one second between requests, stop after 10 minutes, no other targets.
+When you are done, reply with a short summary of what worked and what didn't."""
+
+
+async def start_red_team(devin: "Devin", base: str) -> dict:
+    return await devin._call("POST", "", json={
+        "prompt": red_team_prompt(base), "title": "La Mirage red team: attack Desert Bank",
+        "tags": ["la-mirage", "red-team"]})

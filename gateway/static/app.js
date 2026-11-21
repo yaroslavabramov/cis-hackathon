@@ -54,6 +54,10 @@ function renderTop() {
     : `<span class="dot ${esc(sh.status)}"></span>Shadow bank · ${esc(sh.label)}`;
   $("#shadow").title = sh.detail;
   document.querySelectorAll("#modes button").forEach((b) => b.classList.toggle("on", b.dataset.mode === S.mode));
+  const r = S.red_team || {}, btn = $("#redteam");
+  btn.disabled = !S.devin_configured || !S.public_url || ["starting", "new", "claimed", "running"].includes(r.status);
+  btn.innerHTML = r.url ? `Devin red team: <a href="${esc(r.url)}" target="_blank">${esc(r.status)}</a>` :
+    r.status === "starting" ? "Devin red team: starting…" : "Devin attacks";
 }
 
 function flowSvg(inc) {
@@ -237,7 +241,8 @@ function mapHtml() {
       <path class="lk ${cls} ${x.busy ? "busy" : ""}" d="M${G1} ${mid(i)} C ${G1 + 60} ${mid(i)}, ${D0 - 60} ${mid(j)}, ${D0} ${mid(j)}"/>`;
   }).join("");
   const sessBoxes = sess.map((x, i) => {
-    const who = x.kind === "attacker" ? `Attacker on ${x.name.split(" ")[0]}'s account` : x.kind === "victim" ? `${x.name.split(" ")[0]} (scam victim)` : `${x.name.split(" ")[0]} · customer`;
+    const who = x.device === "red-team-laptop-01" ? `Devin red team on ${x.name.split(" ")[0]}'s account` :
+      x.kind === "attacker" ? `Attacker on ${x.name.split(" ")[0]}'s account` : x.kind === "victim" ? `${x.name.split(" ")[0]} (scam victim)` : `${x.name.split(" ")[0]} · customer`;
     return `<g class="nb ${x.kind || "cust"}"><rect x="${S0}" y="${sy(i)}" width="${S1 - S0}" height="32" rx="8"/>
       <text x="${S0 + 12}" y="${sy(i) + 14}">${esc(who)}</text>
       <text class="m" x="${S0 + 12}" y="${sy(i) + 27}">${esc(x.device)}</text>
@@ -383,6 +388,7 @@ function render() {
   renderTop(); renderFeed(); renderStage();
 }
 
+$("#redteam").addEventListener("click", (e) => { if (e.target.tagName !== "A") fetch("/api/devin-attack", { method: "POST" }); });
 document.querySelectorAll("#modes button").forEach((b) => b.addEventListener("click", () =>
   fetch("/api/protection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: b.dataset.mode }) })));
 $("#reset").addEventListener("click", () => { seen = new Set(); shown.real = shown.attacker = shown.realStart = null; fetch("/api/reset", { method: "POST" }); });
